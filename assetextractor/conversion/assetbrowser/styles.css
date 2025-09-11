@@ -1,0 +1,28 @@
+ul {
+    list-style-type: none;
+}
+
+li {
+    margin: 2px 0;
+}
+
+a {
+    text-decoration: none;
+    color: #1a0dab;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+.inherited {
+    color: gray;
+}
+
+.default {
+    color: #d3d3d3;
+}
+
+.empty {
+    opacity: 0.25;
+}

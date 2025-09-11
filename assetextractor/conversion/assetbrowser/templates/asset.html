@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>{{ asset.short_description }}</title>
+    <link rel="stylesheet" href="../styles.css">
+</head>
+
+<body>
+    <h1>{{ asset.short_description }}</h1>
+    <ul>
+        {% macro format_value_definition(meta) %}
+        {%- set text = "" -%}
+        {%- if meta and meta.data_type is defined and meta.data_type is not none -%}
+        {%- set text = text + meta.data_type|string -%}
+        {%- endif -%}
+        {%- if meta and meta.allow_empty -%}
+        {%- set text = text + " [optional]" -%}
+        {%- endif -%}
+        {%- if meta and meta.min and meta.max -%}
+        {%- set text = text + " [" + meta.min|string + ", " + meta.max|string + "]" -%}
+        {%- elif meta and meta.dataset -%}
+        {%- set text = text + " from " + meta.dataset|string -%}
+        {%- endif -%}
+        {%- if meta and meta.description -%}
+        {%- set description = meta.description -%}
+        {%- set text = text + "\n" + description -%}
+        {%- endif -%}
+        {{ text }}
+        {% endmacro %}
+
+        {% macro render_node(node) %}
+        {% if node.__class__.__name__ == "ReferenceAttribute" %}
+        <span title="{{ format_value_definition(node.meta) }}">{{node.name}}:
+            {% if node() is none %}
+            None
+            {% else %}
+            <a href="{{ node().safe_identifier }}.html" title="{{ format_value_definition(node().meta) }}">{{
+                node().short_description }}</a></span>
+        {% endif %}
+        {% elif node.is_compound %}
+        <span title="{{ format_value_definition(node.meta) if node.meta is defined else '' }}">{{ node.name if node.name
+            else node }}</span>
+        <ul>
+            {% for child in node %}
+            {% set inherited = (child.parent != node) %}
+            {% set is_default = (child.meta.default == child) if child.meta is defined and child.meta is not none and
+            child.meta.default is defined else false %}
+            <li{% if inherited or is_default %}
+                class="{% if inherited %}inherited{% endif %}{% if inherited and is_default %} {% endif %}{% if is_default %}default{% endif %}"
+                {% endif %}>
+                {{ render_node(child) }}
+                </li>
+                {% endfor %}
+        </ul>
+        {% else %}
+        <span title="{{ format_value_definition(node.meta) if node.meta is defined else '' }}">{{ node }}</span>
+        {% endif %}
+        {% endmacro %}
+
+        <li>Template: <a href="../templates/{{ asset.template.safe_identifier }}.html"
+                title="{{ format_value_definition(asset.template.meta) if asset.template.meta is defined else '' }}">{{asset.template.name}}</a>
+        </li>
+        {{ render_node(asset) }}
+    </ul>
+
+    {% for key, ref_dict in asset.named_reference_collections.items() %}
+    {% if ref_dict %}
+    <h1>{{ key }}</h1>
+    <table>
+        <tr>
+            <th>Template</th>
+            <th>Asset</th>
+            <th>Path</th>
+        </tr>
+        {% set sorted_refs = ref_dict.items() | sort(attribute='1.target.template.name') %}
+        {% for guid, ref in sorted_refs %}
+        <tr>
+            {% if ref.target == asset %}
+            <td>
+                <a href="../templates/{{ ref.source.template.name }}.html"
+                    title="{{ format_value_definition(ref.source.template.meta) if ref.source.template.meta is defined else '' }}">
+                    {{ref.source.template.name}}
+                </a>
+            </td>
+            <td>
+                <a href="{{ ref.source.safe_identifier }}.html"
+                    title="{{ format_value_definition(ref.source.meta) if ref.source.meta is defined else '' }}">
+                    {{ ref.source.name if ref.source.name else ref.source.identifier }}
+                </a>
+            </td>
+            <td>{{ ref.path if ref.path else "-" }}</td>
+            {% else %}
+            <td>
+                <a href="../templates/{{ ref.target.template.name }}.html"
+                    title="{{ format_value_definition(ref.target.template.meta) if ref.target.template.meta is defined else '' }}">
+                    {{ref.target.template.name}}
+                </a>
+            </td>
+            <td>
+                <a href="{{ ref.target.safe_identifier }}.html"
+                    title="{{ format_value_definition(ref.target.meta) if ref.target.meta is defined else '' }}">
+                    {{ ref.target.name if ref.target.name else ref.target.identifier }}
+                </a>
+            </td>
+            <td>-</td>
+            {% endif %}
+        </tr>
+        {% endfor %}
+    </table>
+    {% endif %}
+    {% endfor %}
+
+    <h1>XML</h1>
+    <p>{{xml}}</p>
+</body>
+
+</html>

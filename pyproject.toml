@@ -1,0 +1,75 @@
+[project]
+name = "asset-extractor"
+version = "0.1.0"
+description = "Asset extractor for Anno asset.xml files"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.13"
+dependencies = ["lxml>=5.3.1", "Jinja2>=3.1", "Wand>=0.6"]
+
+[project.optional-dependencies]
+jupyter = ["pip>=25", "ipykernel>=6.29", "ipywidgets>=8.1"]
+code-analysis = ["graphviz>=0.20", "networkx>=3.4", "matplotlib>=3.10"]
+claude = ["anthropic>=0.18.0"]
+
+[dependency-groups]
+dev = [
+    "nox>=2025.2.9",
+    "pyright>=1.1.397",
+    "ruff>=0.11.2",
+    "types-lxml>=2025.3.4",
+    "uv>=0.6.9",
+]
+
+
+[tool.uv]
+required-version = "~=0.6"
+
+# If you have mypy installed, disable it
+[tool.mypy]
+ignore_errors = true
+
+[tool.pyright]
+pythonVersion = "3.13"
+typeCheckingMode = "strict"
+reportPrivateUsage = false
+reportMissingTypeStubs = true
+reportUnnecessaryTypeIgnoreComment = "warning"
+reportUninitializedInstanceVariable = "error"
+reportShadowedImports = "warning"
+
+[tool.ruff]
+exclude = ["build"]
+line-length = 120
+target-version = "py313"
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "F",
+    "I",
+    "TCH",
+    "N",
+    "D2",
+    "D3",
+    "D415",
+    "D417",
+    "D418",
+    "D419",
+    "ASYNC",
+    "Q",
+    "RSE",
+    "SIM",
+    "RUF",
+]
+ignore = ["F405", "F403", "E501", "D205"]
+fixable = ["I", "TCH", "D", "RUF"]
+
+[tool.ruff.lint.isort]
+split-on-trailing-comma = false
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
+[tool.ruff.format]
+skip-magic-trailing-comma = true

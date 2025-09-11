@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Templates</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <h1>Templates</h1>
+    <ul>
+        {% macro render_node(node) %}
+
+        <li>{{ node.name if node.name else node }}</li>
+        <ul>
+            {% for name,template in node.elements.items() %}
+            {% set is_empty = (template.instances|length == 0) %}
+            <li{% if is_empty %} class="empty" {% endif %}>
+
+                <span><a href="templates/{{ template.safe_identifier }}.html">{{ name }}</a> ({{
+                    template.instances|length }}
+                    Assets)</span>
+                </li>
+                {% endfor %}
+
+                {% for child in node.subgroups.values() %}
+                <li>
+                    {{ render_node(child) }}
+                </li>
+                {% endfor %}
+        </ul>
+        {% endmacro %}
+
+        {% for group in cache.groups.values() %}
+        {{ render_node(group) }}
+        {% endfor %}
+    </ul>
+</body>
+
+</html>

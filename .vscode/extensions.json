@@ -1,0 +1,10 @@
+{
+    "recommendations": [
+        "ms-python.python",
+        "ms-toolsai.jupyter",
+        "charliermarsh.ruff",
+        "njpwerner.autodocstring",
+        "EditorConfig.EditorConfig",
+        "tamasfe.even-better-toml"
+    ]
+}

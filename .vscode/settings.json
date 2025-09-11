@@ -1,0 +1,41 @@
+{
+    "editor.tabCompletion": "onlySnippets",
+    "python.analysis.autoImportCompletions": true,
+    "python.analysis.typeCheckingMode": "strict",
+    "python.analysis.diagnosticMode": "workspace",
+    "python.analysis.exclude": [
+        "build*",
+        ".nox*",
+    ],
+    "editor.formatOnSave": true,
+    "[python]": {
+        "editor.defaultFormatter": "charliermarsh.ruff"
+    },
+    "autoDocstring.docstringFormat": "numpy",
+    "livePreview.defaultPreviewPath": "/results/asset-browser/assets/26295.html",
+    "jupyter.askForKernelRestart": false,
+    "jupyter.autoStartServer": true,
+    "jupyter.enableAutoMatting": true,
+    "jupyter.enablePlotViewer": true,
+    "jupyter.interactiveWindow.textEditor.executeSelection": "sendToInteractiveWindow",
+    "jupyter.notebookFileRoot": "${workspaceFolder}",
+    "jupyter.output.textEditorLimit": 1000000,
+    "jupyter.showVariableExplorer": true,
+    "files.autoSave": "afterDelay",
+    "files.autoSaveDelay": 1000,
+    "workbench.editor.enablePreview": false,
+    "workbench.editor.enablePreviewFromQuickOpen": false,
+    "files.watcherExclude": {
+        "**/node_modules/**": true,
+        "**/.git/objects/**": true,
+        "**/.git/subtree-cache/**": true,
+        "**/tmp/**": true,
+        "**/bower_components/**": true
+    },
+    "files.useExperimentalFileWatcher": true,
+    "notebook.output.textLineLimit": 1000000,
+    "notebook.cellToolbarLocation": {
+        "default": "right",
+        "jupyter-notebook": "left"
+    }
+}
