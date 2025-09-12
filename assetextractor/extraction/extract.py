@@ -109,8 +109,6 @@ class RDAExtractor:
             "-y",  # Overwrite without prompting
             "-o",
             str(output_dir),
-            "--filter",
-            ".*icon.*",  # Regex filter for paths containing "icon"
         ]
 
         return self.run_rda_console(args)
