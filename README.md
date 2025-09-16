@@ -14,9 +14,11 @@ A modular python library (basically a set of scripts) to read the assets.xml, re
 3. The script will automatically:
    - Install Visual Studio Code, Git, and uv (if not already installed)
    - Set up the Python environment with required dependencies
-   - Install .NET 6 Framework (required for RDAConsole)
+   - Install .NET 6 Desktop Runtime (required for RDAConsole)
    - Download and extract RDAConsole from the latest GitHub release
    - Test that RDAConsole.exe runs correctly
+   - Install ImageMagick (required for Python Wand image processing)
+   - Set MAGICK_HOME environment variable
    - Create `config.json` from the template
    - Run initial RDA extraction from your game directory
 4. Visual Studio Code should open with `browsing.ipynb`. Follow the instructions in the notebook to get started.
@@ -48,16 +50,23 @@ A modular python library (basically a set of scripts) to read the assets.xml, re
         source venv/bin/activate
         ```
 
-2. Install .NET 6 Framework (required for RDAConsole):
+2. Install .NET 6 Desktop Runtime (required for RDAConsole):
    - Download from: https://dotnet.microsoft.com/download/dotnet/6.0
+   - Or use direct link: https://aka.ms/dotnet/6.0/windowsdesktop-runtime-win-x64.exe
 
 3. Download RDAConsole:
    - Download the latest release from: https://github.com/anno-mods/RdaConsole/releases/latest
    - Extract to `./RDAConsole/` folder in the repository root
 
-4. Check that `game_path` in `config.json` points to the installation directory of your Anno game. Make sure to use '/' or '\\\\' as path separators
+4. Install ImageMagick (required for Python Wand):
+   - Download from: https://imagemagick.org/script/download.php#windows
+   - During installation, check all checkboxes (except Perl related)
+   - Set `MAGICK_HOME` environment variable to installation path (e.g., `C:\Program Files\ImageMagick-7.1.1-Q16-HDRI`)
+   - Verify installation by running `magick -version` in command prompt
 
-5. Extract RDA files by running:
+5. Check that `game_path` in `config.json` points to the installation directory of your Anno game. Make sure to use '/' or '\\\\' as path separators
+
+6. Extract RDA files by running:
    ```sh
    # Run the extraction script
    extract.cmd
@@ -69,7 +78,14 @@ A modular python library (basically a set of scripts) to read the assets.xml, re
    - Icon files from `ui.rda`  
    - `.ifo` files from `graphics_*.rda` files
 
-6. **Important**: Run `extract.cmd` whenever there is a game update to refresh the extracted files.
+7. **Important**: Run `extract.cmd` whenever there is a game update to refresh the extracted files.
+
+8. Run the project:
+
+    ```sh
+    # You can use 'uv run' to run files inside the venv if it's not activated
+    uv run main
+    ```
 
 ### Development
 

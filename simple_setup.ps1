@@ -50,21 +50,21 @@ try {
 }
 
 if (-not $dotnetVersion -or -not ($dotnetVersion -match "^6\.")) {
-    Write-Host "Installing .NET 6 Framework..."
-    $dotnetInstaller = "https://download.microsoft.com/download/6/a/b/6ab8a03f-c4a0-4c5e-b9d5-4c4f3c4e6f0e/dotnet-sdk-6.0.427-win-x64.exe"
+    Write-Host "Installing .NET 6 Desktop Runtime..."
+    $dotnetInstaller = "https://aka.ms/dotnet/6.0/windowsdesktop-runtime-win-x64.exe"
     try {
-        Invoke-WebRequest -Uri $dotnetInstaller -OutFile "$env:TEMP\dotnet-sdk-6.0.exe"
-        Start-Process "$env:TEMP\dotnet-sdk-6.0.exe" -ArgumentList "/quiet" -Wait
-        Remove-Item "$env:TEMP\dotnet-sdk-6.0.exe"
-        Write-Host ".NET 6 Framework installed successfully."
+        Invoke-WebRequest -Uri $dotnetInstaller -OutFile "$env:TEMP\dotnet-6-desktop-runtime.exe"
+        Start-Process "$env:TEMP\dotnet-6-desktop-runtime.exe" -ArgumentList "/quiet" -Wait
+        Remove-Item "$env:TEMP\dotnet-6-desktop-runtime.exe"
+        Write-Host ".NET 6 Desktop Runtime installed successfully."
     } catch {
-        Write-Host "Failed to download or install .NET 6 Framework automatically."
+        Write-Host "Failed to download or install .NET 6 Desktop Runtime automatically."
         Write-Host "Please manually install .NET 6 from: https://dotnet.microsoft.com/download/dotnet/6.0"
         Write-Host "Press any key to continue..."
         Read-Host
     }
 } else {
-    Write-Host ".NET 6 Framework is already installed (version: $dotnetVersion)."
+    Write-Host ".NET 6 is already installed (version: $dotnetVersion)."
 }
 
 # Download and extract RDAConsole
@@ -141,6 +141,82 @@ try {
     Write-Host "1. Download .NET 6 from: https://dotnet.microsoft.com/download/dotnet/6.0"
     Write-Host "2. Download RDAConsole from: https://github.com/anno-mods/RdaConsole/releases/latest"
     Write-Host "3. Extract RDAConsole.zip to ./RDAConsole/ folder"
+    Write-Host ""
+    Write-Host "Press any key to continue..."
+    Read-Host
+}
+
+# Install ImageMagick for Python Wand
+$magickHome = $env:MAGICK_HOME
+if (-not $magickHome -or -not (Test-Path "$magickHome\magick.exe")) {
+    Write-Host "Installing ImageMagick for Python Wand support..."
+    try {
+        # Download ImageMagick installer
+        $magickInstaller = "https://imagemagick.org/archive/binaries/ImageMagick-7.1.1-29-Q16-HDRI-x64-dll.exe"
+        $installerPath = "$env:TEMP\ImageMagick-installer.exe"
+        
+        Write-Host "Downloading ImageMagick..."
+        Invoke-WebRequest -Uri $magickInstaller -OutFile $installerPath
+        
+        Write-Host "Installing ImageMagick..."
+        Start-Process $installerPath -ArgumentList "/SILENT" -Wait
+        Remove-Item $installerPath
+        
+        # Find ImageMagick installation directory
+        $magickPaths = @(
+            "C:\Program Files\ImageMagick-7.1.1-Q16-HDRI",
+            "C:\Program Files\ImageMagick*"
+        )
+        
+        $magickInstallPath = $null
+        foreach ($path in $magickPaths) {
+            $foundPaths = Get-ChildItem -Path $path -ErrorAction SilentlyContinue
+            if ($foundPaths) {
+                $magickInstallPath = $foundPaths | Where-Object { Test-Path "$($_.FullName)\magick.exe" } | Select-Object -First 1 -ExpandProperty FullName
+                if ($magickInstallPath) { break }
+            }
+        }
+        
+        if ($magickInstallPath) {
+            # Set MAGICK_HOME environment variable permanently
+            [Environment]::SetEnvironmentVariable("MAGICK_HOME", $magickInstallPath, "Machine")
+            $env:MAGICK_HOME = $magickInstallPath
+            
+            Write-Host "ImageMagick installed successfully at: $magickInstallPath"
+            Write-Host "MAGICK_HOME environment variable set."
+        } else {
+            throw "ImageMagick installation not found"
+        }
+        
+    } catch {
+        Write-Host "Failed to install ImageMagick automatically: $_"
+        Write-Host "Please manually install ImageMagick:"
+        Write-Host "1. Download from: https://imagemagick.org/script/download.php#windows"
+        Write-Host "2. During installation, check all checkboxes (except Perl related)"
+        Write-Host "3. Set MAGICK_HOME environment variable to installation path"
+        Write-Host "   (e.g., C:\Program Files\ImageMagick-7.1.1-Q16-HDRI)"
+        Write-Host "Press any key to continue..."
+        Read-Host
+    }
+} else {
+    Write-Host "ImageMagick is already installed at: $magickHome"
+}
+
+# Test ImageMagick installation
+Write-Host "Testing ImageMagick installation..."
+try {
+    $magickPath = if ($env:MAGICK_HOME) { "$env:MAGICK_HOME\magick.exe" } else { "magick" }
+    $result = & $magickPath -version 2>&1
+    if ($LASTEXITCODE -eq 0 -and $result -match "ImageMagick") {
+        Write-Host "ImageMagick is working correctly."
+    } else {
+        throw "ImageMagick test failed"
+    }
+} catch {
+    Write-Host "ImageMagick test failed: $_"
+    Write-Host ""
+    Write-Host "Please ensure ImageMagick is properly installed and MAGICK_HOME is set."
+    Write-Host "You may need to restart your terminal or computer for environment variables to take effect."
     Write-Host ""
     Write-Host "Press any key to continue..."
     Read-Host
