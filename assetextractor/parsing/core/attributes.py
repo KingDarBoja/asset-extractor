@@ -407,7 +407,7 @@ class TimeAttribute(Attribute["MetaPropertyCache", datetime.timedelta]):
         self.value = datetime.timedelta(milliseconds=int(self._value_text)) if self._value_text else None
 
 
-class UpgradeAttribute(Attribute["MetaPropertyCache", int]):
+class UpgradeAttribute(Attribute["MetaPropertyCache", float]):
     """Consists of an amount (stored in value) and bool percental."""
 
     def __init__(self, node: et._Element, parent: AttributeParentT, meta: ValueDefinition, cache: MetaPropertyCache):
@@ -420,7 +420,7 @@ class UpgradeAttribute(Attribute["MetaPropertyCache", int]):
         else:
             self._value_text = value.text
             try:
-                self.value = int(value.text) if value.text else None
+                self.value = float(value.text) if value.text else None
             except ValueError:
                 raise ValueError(
                     f"Could not convert {value} to int in {self.meta.full_path if self.is_default else self.full_path}"

@@ -131,6 +131,7 @@ class MetaProperty(NamedElement["MetaPropertyCache"]):
             "IsGameProperty",
             "ExportName",
             "Singleton",
+            "IgnoreHashingInTemplates"
         ]
         for child in self.node.iterchildren():
             if child.tag in ignored:

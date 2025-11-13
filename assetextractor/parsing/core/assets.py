@@ -315,8 +315,10 @@ class AssetCache(ElementCache[t.Any]):
             export_dir = unpacked_path / "data/base/config/export"
             game_dir = unpacked_path / "data/base/config/game"
             game_asset_dir = game_dir / "asset"
-            if not game_asset_dir.exists():
-                game_asset_dir = None
+
+            # ignore old game assets
+            #if not game_asset_dir.exists():
+            game_asset_dir = None
             gui_dir = unpacked_path / "data/base/config/gui"
         else:
             export_dir = unpacked_path / "data/config/export/main/asset"
@@ -347,6 +349,9 @@ class AssetCache(ElementCache[t.Any]):
 
         """Load properties"""
         path_properties = export_dir / "properties-toolone.xml"
+
+        if not path_properties.exists():
+            path_properties = export_dir / "properties-meta.xml"
 
         if not path_properties.exists() and game_asset_dir is not None:
             path_properties = game_asset_dir / "properties.xml"
