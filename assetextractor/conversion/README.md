@@ -5,7 +5,8 @@ This directory contains various converters that transform parsed Anno game data 
 ## Available Converters
 
 ### Statistics (`statistics/`)
-**Purpose:** Simple extraction and saving of asset data.
+**Purpose:** Simple extraction and saving of asset data. E.g. need buffs and trade prices.
+`item_extractor` is an advanced example that processes pools, buff attributes and trigger conditions. Since the code is AI generated it is very lengthy.
 
 **What you can learn:**
 - Recursive attribute traversal techniques while avoiding infinite loops (ReferenceAttribute handling)

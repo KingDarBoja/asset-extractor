@@ -12,7 +12,7 @@ The project is organized into three main modules under `assetextractor/`:
 
 ### 1. Extraction (`assetextractor/extraction/`)
 - **Purpose**: Opens RDA files and extracts XML, DDS, CFG files to cache directory
-- **Key Files**: 
+- **Key Files**:
   - `utils.py` (Config class for managing paths)
   - `extract.py` (Dynamic RDA extraction using RDAConsole.exe)
 - **Status**: Implemented with automated extraction workflow
@@ -92,7 +92,7 @@ uv run assetextractor/conversion/assetbrowser/convert.py
 ### RDA Extraction
 - **RDAConsole Integration**: Uses RDAConsole.exe for extracting game files
 - **Subprocess Issues**: RDAConsole requires `shell=True` and `CREATE_NEW_CONSOLE` to avoid console handle errors
-- **Extraction Strategy**: 
+- **Extraction Strategy**:
   - All files from `config.rda`
   - Icon files from `ui.rda` (filter: `.*icon.*`)
   - `.ifo` files from `graphics_*.rda` (filter: `.*\.ifo$`)
@@ -125,3 +125,5 @@ Launch configurations are provided in `.vscode/launch.json`:
 - **Core**: lxml, Jinja2, Wand
 - **Development**: nox, pyright, ruff, uv
 - **Optional**: Jupyter notebooks, code analysis tools
+
+@AGENTS.md
