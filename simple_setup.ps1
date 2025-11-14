@@ -22,10 +22,68 @@ else {
     Write-Host "Git is already installed."
 }
 
-# Pull the repository of the current directory
-Write-Host "Pulling the repository..."
-git fetch origin
-git pull origin main
+# Check if repository is properly checked out
+Write-Host "Checking repository status..."
+$isGitRepo = Test-Path -Path ".git"
+$hasProjectFiles = Test-Path -Path "pyproject.toml"
+
+if (-not $isGitRepo) {
+    # No .git folder - not a git repository
+    Write-Host ""
+    Write-Host "ERROR: Git repository not found!" -ForegroundColor Red
+    Write-Host "Current directory: $PWD"
+    Write-Host ""
+    Write-Host "This script requires the .git folder to be present."
+    Write-Host "Please ensure you have extracted the complete zip file including the .git folder."
+    Write-Host ""
+    Write-Host "Press any key to exit..."
+    Read-Host
+    exit 1
+}
+
+if (-not $hasProjectFiles) {
+    # .git exists but project files missing - need to checkout
+    Write-Host "Git repository found, but project files are missing."
+    Write-Host "Checking out project files from repository..."
+    try {
+        git reset --hard HEAD
+        git checkout main
+        Write-Host "Project files checked out successfully."
+    }
+    catch {
+        Write-Host ""
+        Write-Host "ERROR: Failed to checkout project files: $_" -ForegroundColor Red
+        Write-Host ""
+        Write-Host "Press any key to exit..."
+        Read-Host
+        exit 1
+    }
+}
+
+# Verify project files now exist
+if (-not (Test-Path -Path "pyproject.toml")) {
+    Write-Host ""
+    Write-Host "ERROR: Project files still missing after checkout!" -ForegroundColor Red
+    Write-Host "The repository may be corrupted or incomplete."
+    Write-Host ""
+    Write-Host "Press any key to exit..."
+    Read-Host
+    exit 1
+}
+
+# Pull latest changes
+Write-Host "Updating repository to latest version..."
+try {
+    git fetch origin
+    git pull origin main
+    Write-Host "Repository updated successfully."
+}
+catch {
+    Write-Host "Warning: Failed to pull latest changes: $_" -ForegroundColor Yellow
+    Write-Host "Continuing with existing files..."
+}
+
+Write-Host "Project files verified successfully."
 
 # Install uv
 # Check if uv is installed
@@ -45,7 +103,8 @@ uv sync --dev --extra jupyter
 $dotnetVersion = $null
 try {
     $dotnetVersion = dotnet --version 2>$null
-} catch {
+}
+catch {
     # dotnet command not found
 }
 
@@ -57,13 +116,15 @@ if (-not $dotnetVersion -or -not ($dotnetVersion -match "^6\.")) {
         Start-Process "$env:TEMP\dotnet-6-desktop-runtime.exe" -ArgumentList "/quiet" -Wait
         Remove-Item "$env:TEMP\dotnet-6-desktop-runtime.exe"
         Write-Host ".NET 6 Desktop Runtime installed successfully."
-    } catch {
+    }
+    catch {
         Write-Host "Failed to download or install .NET 6 Desktop Runtime automatically."
         Write-Host "Please manually install .NET 6 from: https://dotnet.microsoft.com/download/dotnet/6.0"
         Write-Host "Press any key to continue..."
         Read-Host
     }
-} else {
+}
+else {
     Write-Host ".NET 6 is already installed (version: $dotnetVersion)."
 }
 
@@ -76,42 +137,44 @@ if (-not (Test-Path -Path "$rdaConsolePath/RDAConsole.exe")) {
         $apiUrl = "https://api.github.com/repos/anno-mods/RdaConsole/releases/latest"
         $release = Invoke-RestMethod -Uri $apiUrl
         $downloadUrl = $release.assets | Where-Object { $_.name -like "*.zip" } | Select-Object -First 1 | ForEach-Object { $_.browser_download_url }
-        
+
         if (-not $downloadUrl) {
             throw "No zip asset found in latest release"
         }
-        
+
         # Download and extract
         $zipPath = "$env:TEMP\RDAConsole.zip"
         Invoke-WebRequest -Uri $downloadUrl -OutFile $zipPath
-        
+
         # Create RDAConsole directory if it doesn't exist
         if (-not (Test-Path -Path $rdaConsolePath)) {
             New-Item -ItemType Directory -Path $rdaConsolePath -Force
         }
-        
+
         # Extract the zip directly to RDAConsole folder (flattening any subdirectories)
         $tempExtractPath = "$env:TEMP\RDAConsole_temp"
         Expand-Archive -Path $zipPath -DestinationPath $tempExtractPath -Force
-        
+
         # Move all files from any subdirectories to the target directory
         Get-ChildItem -Path $tempExtractPath -Recurse -File | ForEach-Object {
             Move-Item $_.FullName -Destination $rdaConsolePath -Force
         }
-        
+
         # Clean up temporary directories
         Remove-Item $zipPath -Force
         Remove-Item $tempExtractPath -Recurse -Force
-        
+
         Write-Host "RDAConsole downloaded and extracted successfully."
-    } catch {
+    }
+    catch {
         Write-Host "Failed to download RDAConsole automatically: $_"
         Write-Host "Please manually download RDAConsole from: https://github.com/anno-mods/RdaConsole/releases/latest"
         Write-Host "Extract it to the 'RDAConsole' folder in the repository root."
         Write-Host "Press any key to continue..."
         Read-Host
     }
-} else {
+}
+else {
     Write-Host "RDAConsole is already downloaded."
 }
 
@@ -123,13 +186,16 @@ try {
         $result = & $rdaConsoleExe 2>&1
         if ($LASTEXITCODE -eq 0 -or $result -match "RDAConsole|Usage|Help") {
             Write-Host "RDAConsole.exe is working correctly."
-        } else {
+        }
+        else {
             throw "RDAConsole.exe execution failed"
         }
-    } else {
+    }
+    else {
         throw "RDAConsole.exe not found at $rdaConsoleExe"
     }
-} catch {
+}
+catch {
     Write-Host "RDAConsole.exe test failed: $_"
     Write-Host ""
     Write-Host "Please ensure:"
@@ -151,54 +217,92 @@ $magickHome = $env:MAGICK_HOME
 if (-not $magickHome -or -not (Test-Path "$magickHome\magick.exe")) {
     Write-Host "Installing ImageMagick for Python Wand support..."
     try {
-        # Download ImageMagick installer
-        $magickInstaller = "https://imagemagick.org/archive/binaries/ImageMagick-7.1.1-29-Q16-HDRI-x64-dll.exe"
+        # Get the latest Q8 build from ImageMagick binaries
+        Write-Host "Fetching latest ImageMagick Q8 build..."
+        $binariesPage = Invoke-WebRequest -Uri "https://imagemagick.org/archive/binaries/" -UseBasicParsing
+
+        # Find all Q8 x64 dll.exe files and get the latest version
+        $q8Files = $binariesPage.Links | Where-Object {
+            $_.href -match "ImageMagick-.*-Q8-x64-dll\.exe$"
+        } | Select-Object -ExpandProperty href | Sort-Object -Descending
+
+        if (-not $q8Files -or $q8Files.Count -eq 0) {
+            throw "No Q8 build found on binaries page"
+        }
+
+        $latestQ8 = $q8Files[0]
+        $magickInstaller = "https://imagemagick.org/archive/binaries/$latestQ8"
         $installerPath = "$env:TEMP\ImageMagick-installer.exe"
-        
-        Write-Host "Downloading ImageMagick..."
+
+        Write-Host "Downloading ImageMagick Q8 ($latestQ8)..."
         Invoke-WebRequest -Uri $magickInstaller -OutFile $installerPath
-        
+
         Write-Host "Installing ImageMagick..."
         Start-Process $installerPath -ArgumentList "/SILENT" -Wait
         Remove-Item $installerPath
-        
+
         # Find ImageMagick installation directory
-        $magickPaths = @(
-            "C:\Program Files\ImageMagick-7.1.1-Q16-HDRI",
-            "C:\Program Files\ImageMagick*"
-        )
-        
+        # Search for any ImageMagick installation with Q8 in the name
         $magickInstallPath = $null
-        foreach ($path in $magickPaths) {
-            $foundPaths = Get-ChildItem -Path $path -ErrorAction SilentlyContinue
-            if ($foundPaths) {
-                $magickInstallPath = $foundPaths | Where-Object { Test-Path "$($_.FullName)\magick.exe" } | Select-Object -First 1 -ExpandProperty FullName
-                if ($magickInstallPath) { break }
+        $searchPaths = Get-ChildItem -Path "C:\Program Files" -Filter "ImageMagick*" -Directory -ErrorAction SilentlyContinue
+
+        # Prioritize Q8 installations
+        foreach ($dir in $searchPaths) {
+            if (Test-Path "$($dir.FullName)\magick.exe") {
+                if ($dir.Name -match "-Q8-") {
+                    $magickInstallPath = $dir.FullName
+                    break
+                }
+                elseif (-not $magickInstallPath) {
+                    # Fallback to any ImageMagick installation
+                    $magickInstallPath = $dir.FullName
+                }
             }
         }
-        
+
         if ($magickInstallPath) {
             # Set MAGICK_HOME environment variable permanently
-            [Environment]::SetEnvironmentVariable("MAGICK_HOME", $magickInstallPath, "Machine")
+            # Try Machine level first, fall back to User level if no admin rights
+            try {
+                [Environment]::SetEnvironmentVariable("MAGICK_HOME", $magickInstallPath, "Machine")
+                Write-Host "ImageMagick installed successfully at: $magickInstallPath"
+                Write-Host "MAGICK_HOME environment variable set at Machine level."
+            }
+            catch {
+                # Fall back to User level if Machine level requires admin
+                try {
+                    [Environment]::SetEnvironmentVariable("MAGICK_HOME", $magickInstallPath, "User")
+                    Write-Host "ImageMagick installed successfully at: $magickInstallPath"
+                    Write-Host "MAGICK_HOME environment variable set at User level."
+                    Write-Host "Note: Run as Administrator to set system-wide environment variable." -ForegroundColor Yellow
+                }
+                catch {
+                    Write-Host "Warning: Failed to set MAGICK_HOME environment variable: $_" -ForegroundColor Yellow
+                    Write-Host "You may need to set it manually to: $magickInstallPath"
+                }
+            }
+
+            # Set for current session
             $env:MAGICK_HOME = $magickInstallPath
-            
-            Write-Host "ImageMagick installed successfully at: $magickInstallPath"
-            Write-Host "MAGICK_HOME environment variable set."
-        } else {
+        }
+        else {
             throw "ImageMagick installation not found"
         }
-        
-    } catch {
+
+    }
+    catch {
         Write-Host "Failed to install ImageMagick automatically: $_"
         Write-Host "Please manually install ImageMagick:"
-        Write-Host "1. Download from: https://imagemagick.org/script/download.php#windows"
+        Write-Host "1. Download Q8 build from: https://imagemagick.org/archive/binaries/"
+        Write-Host "   Look for: ImageMagick-*-Q8-x64-dll.exe"
         Write-Host "2. During installation, check all checkboxes (except Perl related)"
         Write-Host "3. Set MAGICK_HOME environment variable to installation path"
-        Write-Host "   (e.g., C:\Program Files\ImageMagick-7.1.1-Q16-HDRI)"
+        Write-Host "   (e.g., C:\Program Files\ImageMagick-7.1.1-Q8-x64)"
         Write-Host "Press any key to continue..."
         Read-Host
     }
-} else {
+}
+else {
     Write-Host "ImageMagick is already installed at: $magickHome"
 }
 
@@ -209,10 +313,12 @@ try {
     $result = & $magickPath -version 2>&1
     if ($LASTEXITCODE -eq 0 -and $result -match "ImageMagick") {
         Write-Host "ImageMagick is working correctly."
-    } else {
+    }
+    else {
         throw "ImageMagick test failed"
     }
-} catch {
+}
+catch {
     Write-Host "ImageMagick test failed: $_"
     Write-Host ""
     Write-Host "Please ensure ImageMagick is properly installed and MAGICK_HOME is set."

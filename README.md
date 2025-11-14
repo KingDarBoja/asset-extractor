@@ -5,13 +5,16 @@ A modular python library (basically a set of scripts) to read the assets.xml, re
 ## Setup
 ### Simple Setup
 1. Clone this repository.
+    * Either download and unzip: https://github.com/anno-mods/asset-extractor/releases/download/1.0/asset-extractor.zip
+    * Or install [GitHub Desktop](https://desktop.github.com/download/) and inside GitHub desktop use the following link to clone the repository: https://github.com/anno-mods/asset-extractor.git
 2. Right click on `simple_setup.ps1` and click on `Run with PowerShell` in the context menu. In case the window immediately closes do the following:
     1. Right click on the file, click properties, and check `unblock` (skip this step if there is no such checkbox). Refer to the image for guidance:
     ![](images/unblock_file.png)
     2. Right click in the explorer and click "Open in Terminal"
     3. Type and hit enter: `Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force`
     4. Type and hit enter: `.\simple_setup.ps1`
-3. The script will automatically:
+3. The script will **automatically**:
+   - Check out the latest version
    - Install Visual Studio Code, Git, and uv (if not already installed)
    - Set up the Python environment with required dependencies
    - Install .NET 6 Desktop Runtime (required for RDAConsole)
@@ -75,7 +78,7 @@ A modular python library (basically a set of scripts) to read the assets.xml, re
    ```
    This extracts:
    - All files from `config.rda`
-   - Icon files from `ui.rda`  
+   - Icon files from `ui.rda`
    - `.ifo` files from `graphics_*.rda` files
 
 7. **Important**: Run `extract.cmd` whenever there is a game update to refresh the extracted files.
