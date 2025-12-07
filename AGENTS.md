@@ -5,13 +5,79 @@ This guide documents how to navigate and extract data from Anno 117's asset stru
 
 ## Table of Contents
 
-1. [Basic Setup](#basic-setup)
-2. [Item Structure](#item-structure)
-3. [Buff System](#buff-system)
-4. [Boost Conditions (ItemWithBoost)](#boost-conditions-itemwithboost)
-5. [Finding Item Sources](#finding-item-sources)
-6. [Asset Pools](#asset-pools)
-7. [Common Patterns](#common-patterns)
+1. [Class Reference](#class-reference)
+2. [Basic Setup](#basic-setup)
+3. [Item Structure](#item-structure)
+4. [Buff System](#buff-system)
+5. [UI Text Mapping](#ui-text-mapping)
+6. [Boost Conditions (ItemWithBoost)](#boost-conditions-itemwithboost)
+7. [Finding Item Sources](#finding-item-sources)
+8. [Asset Pools](#asset-pools)
+9. [Common Patterns](#common-patterns)
+
+## Class Reference
+
+### Parsing Module (assetextractor/parsing/core/)
+
+#### common.py
+- `AttributeMissingError(Exception)` - raised when expected XML attribute is missing
+- `NamedElement[CacheT]` - base class for XML elements, provides name, find(), get(), full_path, property_path
+- `Group[CacheT](NamedElement[CacheT])` - container for elements and subgroups, provides print_tree()
+- `ElementCache[ElementT, GroupT]` - base cache class with elements dict, provides add(), get(), find(), print_tree()
+- `Dataset(NamedElement["DatasetCache"])` - dataset with name-to-id mappings, provides literals property
+- `DatasetCache(ElementCache["Dataset"])` - loads datasets.xml file
+
+#### attributes.py
+- `parse_bool(text)` - converts Anno boolean string to Python bool
+- `Property(NamedElement[Any])` - property with nested structure, provides resolve_inheritance(), print_tree()
+- `Attribute[CacheT, ValueT](NamedElement[CacheT])` - base class for attributes, provides __call__(), is_compound, is_default
+- `PrimitiveAttribute(Attribute)` - handles Boolean, Choice, Float, FloatOrPercental, Int64, Integer, String types, provides ui_text_id, ui_icon_guid, ui_text_variants, buff_ui
+- `ColorAttribute(Attribute)` - handles single int or dict with color components
+- `TextAttribute(Attribute)` - references localized text by ID, returns Text object
+- `TimeAttribute(Attribute)` - duration stored as datetime.timedelta
+- `UpgradeAttribute(Attribute)` - numeric value with percental flag, provides buff_ui
+- `FlagsAttribute(Attribute)` - semicolon-separated list of dataset literals, provides buff_ui
+- `FileNameAttribute(Attribute)` - file path with .dds resolution, provides is_image, get_image(), get_data_url()
+- `ReferenceAttribute(Attribute)` - reference to Asset by GUID, provides set_reference()
+- `QuestAttribute(ReferenceAttribute)` - quest reference with win_quest boolean
+- `ListItem` - container for list item data, provides full_path, property_path, buff_ui, print_tree()
+- `ListAttribute(Attribute)` - ordered list of ListItem, provides __len__(), buff_ui
+- `GenericDictAttribute[ValueT](Attribute)` - base for dict-like attributes, provides __len__()
+- `DictAttribute(GenericDictAttribute)` - dict of attributes for Array/Struct/Property, provides buff_ui
+- `TemplateAttribute(GenericDictAttribute)` - AutoCreateAsset with template reference, provides set_template(), process_properties()
+- `AttributeFactory` - static factory with create(), create_default_node()
+
+#### properties.py
+- `ValueDefinition(NamedElement["MetaPropertyCache"])` - metadata for attributes, provides is_primitive, is_compound
+- `MetaProperty(NamedElement["MetaPropertyCache"])` - metadata for properties, provides is_complex, print_tree()
+- `PropertyGroup(Group["MetaPropertyCache"])` - group with properties and defaults
+- `MetaPropertyCache(ElementCache[MetaProperty, PropertyGroup])` - parses properties-toolone.xml, provides resolve_template_attributes()
+
+#### templates.py
+- `WeightedReference` - stores reference with optional weight and path
+- `Template(NamedElement["TemplateCache"])` - template definition, provides add_instance(), print_tree(), print_meta_tree(), assets property
+- `TemplateGroup(Group["TemplateCache"])` - group containing templates
+- `TemplateCache(ElementCache[Template, TemplateGroup])` - loads templates.xml, provides resolve_template_attributes()
+
+#### assets.py
+- `Asset(NamedElement["AssetCache"])` - concrete asset instance, provides guid, text, template, resolve_inheritance(), set_referenced_by(), print_tree(), short_description, long_description, buff_ui (returns list[BuffUI])
+- `AssetGroup(Group["AssetCache"])` - group containing assets
+- `AssetCache(ElementCache[Any])` - loads assets.xml, provides resolve_inheritance(), resolve_references(), resolve_dlc_unlocks(), static load(config)
+
+#### texts.py
+- `Text(NamedElement["TextCache"])` - localized text with id and values dict, provides has_html_escapes(), count_format_args(), format(list), __call__() for conversion
+- `TextCache(ElementCache[Text])` - loads texts_*.xml for all languages, provides converter property
+- `StandardTextConverter` - converts Text to string in specified language, provides __call__(text)
+
+#### uitext.py
+- `UITextMapping` - dataclass with text_id, text, icon, variants fields
+- `BuffUI` - dataclass with icon, text, value, literal fields for UI display
+- `UITextCache` - maps dataset literals to UI text/icons, provides get_ui_text(), get_text_id(), get_buff_type_name(), format_buff_text(), create_buff_ui(), create_buff_ui_list(), create_buff_ui_dict(), create_buff_ui_flags()
+
+### Conversion Module (assetextractor/conversion/)
+
+#### assetbrowser/convert.py
+- `Converter` - generates HTML asset browser, provides render_elements(), render_overview(), run()
 
 ## Basic Setup
 
@@ -26,6 +92,83 @@ templates = assets.templates
 
 # Access specific template
 items = templates["Item"].assets
+```
+
+## Getting BuffUI from Assets
+
+### Asset.buff_ui Property
+
+All `Asset` objects now have a `buff_ui` property that recursively traverses all nested attributes and returns a list of `BuffUI` objects representing the asset's effects.
+
+```python
+# Get an asset (Item, BuildingBuff, ShipBuff, etc.)
+item = assets[some_guid]
+
+# Get all BuffUI representations from the asset
+buff_ui_list = item.buff_ui  # Returns list[BuffUI]
+
+# Iterate through the buffs
+for buff_ui in buff_ui_list:
+    # Access BuffUI properties
+    icon = buff_ui.icon          # FileNameAttribute or None
+    text = buff_ui.text          # Text object or str or None
+    value = buff_ui.value        # Formatted string (e.g., "+25%", "50")
+    literal = buff_ui.literal    # Dataset literal or None
+
+    # Get English text
+    if text and hasattr(text, "values"):
+        english_text = text.values.get("english", "N/A")
+    elif isinstance(text, str):
+        english_text = text
+
+    # Get icon filename
+    if icon and icon.value:
+        icon_filename = icon.value.stem
+```
+
+**How it works:**
+- Recursively traverses all properties and attributes in the asset
+- Calls the `buff_ui` property on each attribute that has one
+- Collects all non-None BuffUI results into a single list
+- Handles nested structures (Properties, DictAttribute, ListAttribute, etc.)
+
+**Supported attribute types:**
+- `PrimitiveAttribute` - Returns single BuffUI for Choice attributes with datasets
+- `UpgradeAttribute` - Returns single BuffUI with formatted value and percental
+- `FlagsAttribute` - Returns list of BuffUI for flag literals
+- `ListAttribute` - Returns list of BuffUI for formatted list items
+- `DictAttribute` - Returns list of BuffUI for dict entries with non-zero values
+- `ListItem` - Returns single BuffUI with formatted text (for special buff types)
+
+**Example usage:**
+
+```python
+# Get all items from the Item template
+items_template = assets.templates["Item"]
+
+for item in items_template.assets:
+    buff_list = item.buff_ui
+
+    if buff_list:
+        print(f"\n{item.name} ({item.guid}):")
+        for buff in buff_list:
+            print(f"  - {buff}")  # Uses BuffUI.__str__()
+```
+
+**Example with BuildingBuff:**
+
+```python
+# Get a building buff
+buff = assets[82302]  # TechEffect Production Beaver Terrain Buff
+
+# Get all BuffUI objects
+buffs = buff.buff_ui
+# Returns:
+# [
+#   BuffUI(icon=productivity_icon, text="Productivity", value="+25%"),
+#   BuffUI(icon=forest_icon, text="Can use forests", value="+1"),
+#   BuffUI(icon=meadow_icon, text="Can use meadows", value="+1")
+# ]
 ```
 
 ## Item Structure
@@ -178,6 +321,250 @@ if need_attrs:
     additional_attrs = need_attrs.AdditionalNeedAttributes
     # These apply only when the need is provided
 ```
+
+## UI Text Mapping
+
+### Overview
+
+The UI Text Mapping system automatically associates localized display text and icons to dataset/enum values (like rarity, item niche, buff types) by loading configuration assets. This eliminates hardcoded text ID lookups.
+
+**Key Benefits**:
+- Zero manual text ID maintenance
+- Automatic updates when game data changes
+- Type-safe attribute access
+- Configuration-driven (only 3 asset GUIDs needed)
+
+### Accessing UI Text from Attributes
+
+All `PrimitiveAttribute` instances with `Choice` data type automatically provide UI text via lazy-loaded properties:
+
+```python
+# Load assets
+assets = AssetCache.load(config)
+texts = assets.texts
+
+# Get an item
+item = assets[some_guid]
+
+# Access UI text properties (lazy loaded on first access)
+rarity_attr = item.Item.Rarity
+rarity_value = rarity_attr()           # e.g., "Legendary"
+rarity_text_id = rarity_attr.ui_text_id       # Localized text ID (negative number)
+rarity_icon_guid = rarity_attr.ui_icon_guid   # Icon asset GUID
+
+# Get the English text from TextCache
+if rarity_text_id:
+    text_obj = texts.elements.get(rarity_text_id)
+    if text_obj:
+        english_text = text_obj.values.get("english", "N/A")  # "Legendary"
+```
+
+### TextCache Access Pattern
+
+The `texts` object is a `TextCache`, not a simple dictionary. Use this pattern:
+
+```python
+def get_text(text_id, texts):
+    """Get English text for a text ID."""
+    if text_id is None:
+        return None
+    text_obj = texts.elements.get(text_id)
+    if text_obj:
+        return text_obj.values.get("english", "N/A")
+    return None
+
+# Usage
+rarity_text = get_text(rarity_attr.ui_text_id, texts)
+```
+
+**Important**: Do NOT use `texts["english"].get(text_id)` - this will fail with AttributeError.
+
+### Variant Text
+
+Some attributes have context-specific text variants (e.g., BuffConstructionCost has different text for shipyards vs recruitment):
+
+```python
+# Get buff attribute with variants
+buff_attr = buff.find("BuildingUpgrade.ProductivityUpgrade")
+
+# Access base text
+base_text_id = buff_attr.ui_text_id
+
+# Access variant text
+variants = buff_attr.ui_text_variants  # dict[str, int] or None
+if variants:
+    shipyard_text_id = variants.get("ShipyardText")
+    recruitment_text_id = variants.get("RecruitmentText")
+
+    # Get the actual text
+    shipyard_text = get_text(shipyard_text_id, texts)
+```
+
+### Direct UITextCache Access
+
+You can also query the cache directly without using attributes:
+
+```python
+# Get the UI text cache
+ui_cache = assets.properties.ui_text_cache
+
+# Lookup by dataset and literal
+mapping = ui_cache.get_ui_text("Rarity", "Legendary")
+if mapping:
+    text_id = mapping.text_id
+    icon_guid = mapping.icon_guid
+    variants = mapping.variants  # dict[str, int]
+
+# Convenience methods
+text_id = ui_cache.get_text_id("ItemNiche", "Finance")
+icon_guid = ui_cache.get_icon_guid("ItemNiche", "Finance")
+
+# Check cache size
+num_mappings = len(ui_cache)  # e.g., 44 mappings
+```
+
+### Supported Datasets
+
+The following datasets have automatic UI text mappings:
+
+- **Rarity** (8 values): Common, Rare, Epic, Legendary, Unique, Artifact, QuestItem, CollectorsEdition
+- **ItemNiche** (10 values): Finance, Religion, Research, Culture, Military, Nautics, Tourism, Special, Public, Trade
+- **ItemAllocation** (3 values): Ship, Villa, None
+- **Scope** (12 values): Local, Radius, Area, Session, Meta, Island, VisitorHarbour, Guild, Expedition, Trade, Shared, QuestGiver
+- **BuffUpgradeType** (~100+ values): BuffProductivity, BuffSpeed, BuffHitpoints, BuffMaintenance, BuffLoadingSpeed, BuffAttackRange, etc.
+- **NotSockableReason** (4 values): WrongAllocation, Duplicate, Exclusive, NoSpaceLeft
+- **SocketExclusiveGroup**: Various exclusive socket groups
+- **ItemType**: Specialist, Captains, etc.
+- **BuffCategoryType**: Buff category names
+
+### Example: Item Extraction with UI Text
+
+```python
+def extract_item_with_ui_text(item, assets):
+    """Extract item data with UI text for all attributes."""
+    texts = assets.texts
+    result = {}
+
+    # Basic info
+    result["guid"] = item.guid
+    result["name"] = item.text.values.get("english", "Unknown") if item.text else "N/A"
+
+    # Rarity with UI text
+    if hasattr(item.Item, "Rarity"):
+        rarity_attr = item.Item.Rarity
+        result["rarity_value"] = rarity_attr()
+        result["rarity_text_id"] = rarity_attr.ui_text_id
+        result["rarity_icon_guid"] = rarity_attr.ui_icon_guid
+
+        # Get English text
+        if rarity_attr.ui_text_id:
+            text_obj = texts.elements.get(rarity_attr.ui_text_id)
+            if text_obj:
+                result["rarity_display"] = text_obj.values.get("english", "N/A")
+
+    # Niche with UI text
+    if hasattr(item.Item, "Niche"):
+        niche_attr = item.Item.Niche
+        result["niche_value"] = niche_attr()
+        result["niche_text_id"] = niche_attr.ui_text_id
+
+        # Get English text
+        if niche_attr.ui_text_id:
+            text_obj = texts.elements.get(niche_attr.ui_text_id)
+            if text_obj:
+                result["niche_display"] = text_obj.values.get("english", "N/A")
+
+    # Allocation with UI text
+    if hasattr(item.Item, "Allocation"):
+        alloc_attr = item.Item.Allocation
+        result["allocation_value"] = alloc_attr()
+        result["allocation_text_id"] = alloc_attr.ui_text_id
+
+        # Get English text
+        if alloc_attr.ui_text_id:
+            text_obj = texts.elements.get(alloc_attr.ui_text_id)
+            if text_obj:
+                result["allocation_display"] = text_obj.values.get("english", "N/A")
+
+    return result
+
+# Usage
+items = assets.templates["Item"].assets
+for item in items:
+    data = extract_item_with_ui_text(item, assets)
+    print(f"{data['name']}: {data.get('rarity_display')} {data.get('niche_display')}")
+```
+
+### Buff Attributes with UI Text
+
+When extracting buff attributes, UI text is automatically available:
+
+```python
+# Get buff from item
+effect = item.Effect
+for buff_entry in effect.Buffs:
+    buff_asset = assets[buff_entry.GUID.guid]
+
+    # Check productivity upgrade
+    prod_attr = buff.find("FactoryUpgrade.ProductivityUpgrade")
+    if prod_attr and prod_attr():
+        # The attribute has a dataset reference
+        if hasattr(prod_attr, 'meta') and prod_attr.meta.dataset:
+            dataset_name = prod_attr.meta.dataset.name  # "BuffUpgradeType"
+            buff_type = prod_attr()  # "BuffProductivity"
+
+            # Get UI text
+            text_id = prod_attr.ui_text_id
+            icon_guid = prod_attr.ui_icon_guid
+
+            if text_id:
+                text_obj = texts.elements.get(text_id)
+                if text_obj:
+                    buff_display = text_obj.values.get("english")  # "Productivity"
+```
+
+### Configuration
+
+The UI text mappings are loaded from three configuration assets:
+
+1. **ItemInfotipTextFeature (GUID 142928)**: Buff upgrade types and their variants
+2. **ItemBalancing (GUID 6000017)**: Item properties (rarity, niche, scope, allocation)
+3. **BuffConfig (GUID 52456)**: Buff category names
+
+To add support for new datasets, edit `CONFIG_ASSETS` in `assetextractor/parsing/core/uitext.py`:
+
+```python
+CONFIG_ASSETS = {
+    142928: {
+        "path": "ItemInfotipTextFeature.BuffUpgradeTextAndIcons",
+        "mappings": {
+            "BuffUpgradeType": "{}.Text",  # {} is replaced with literal value
+        },
+        "variants": {
+            "BuffConstructionCost": ["ShipyardText", "RecruitmentText"],
+        },
+    },
+}
+```
+
+### Best Practices
+
+1. **Use the helper function** - Create a `get_text()` helper to handle TextCache access
+2. **Check for None** - Always check if `ui_text_id` is not None before accessing TextCache
+3. **Cache the texts object** - Keep a reference to `assets.texts` instead of accessing it repeatedly
+4. **Lazy loading** - UI text is only loaded on first property access (performance optimization)
+5. **Graceful degradation** - If UI text is unavailable, properties return `None` (no crashes)
+6. **Type-safe access** - Use `.ui_text_id` properties instead of manual cache lookups
+7. **Variant awareness** - Check `.ui_text_variants` for context-specific text
+
+### Testing
+
+See `test_uitext.ipynb` for comprehensive examples including:
+1. Direct cache lookups for all supported datasets
+2. Attribute property access patterns
+3. Variant text handling
+4. Coverage statistics (% of dataset values mapped)
+5. Integration with item extraction
 
 ## Boost Conditions (ItemWithBoost)
 

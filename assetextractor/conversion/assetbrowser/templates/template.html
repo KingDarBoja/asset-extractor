@@ -15,7 +15,9 @@
         {% if node.__class__.__name__ == "ReferenceAttribute" %}
         {% set ref = node() %}
         <span>{{node.name}}:
-            {% if ref is not none %}
+            {% if node.is_variable %}
+            {{ node.variable_name }} <em>(Variable)</em>
+            {% elif ref is not none %}
             <a href="../assets/{{ ref.safe_identifier }}.html">{{ ref.name if ref.name else ref }}</a>
             {% else %}
             None
@@ -35,7 +37,11 @@
                 {% endfor %}
         </ul>
         {% else %}
+        {% if node.is_variable is defined and node.is_variable %}
+        {{ node.name }}: {{ node.variable_name }} <em>(Variable)</em>
+        {% else %}
         {{ node }}
+        {% endif %}
         {% endif %}
 
         {% endmacro %}

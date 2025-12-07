@@ -4,6 +4,7 @@ import base64
 import datetime
 import logging
 import typing as t
+from contextlib import suppress
 from io import BytesIO
 from pathlib import Path
 
@@ -15,12 +16,15 @@ from assetextractor.parsing.core.texts import Text
 
 logger = logging.getLogger("parsing")
 
-type AttributeParentT = Attribute[MetaPropertyCache, t.Any] | Property | ListItem | None
+type AttributeParentT = (
+    Attribute[MetaPropertyCache, t.Any] | Property | ListItem | "NamedElement[MetaPropertyCache]" | None
+)
 
 if t.TYPE_CHECKING:
     from assetextractor.parsing.core.assets import Asset
     from assetextractor.parsing.core.properties import MetaProperty, MetaPropertyCache, PropertyGroup, ValueDefinition
     from assetextractor.parsing.core.templates import Template
+    from assetextractor.parsing.core.uitext import BuffUI
 
 
 def parse_bool(text: str | None) -> bool:
@@ -132,18 +136,12 @@ class Property(NamedElement[t.Any]):
                     logger.debug(f"{attr.name} from {default.full_path}")
                     attr.resolve_inheritance(default_attr)
 
-    # def get_all_attributes(self) -> List[Attribute]:
-    #     name = "_all_attributes"
-    #     if not hasattr(self, name):
-    #         all_attributes = []
-    #         for meta_property in self.meta.properties.values():
-    #             all_attributes += getattr(self, meta_property.name).get_all_attributes()
+    def find_ref(self, path: str) -> Asset | None:
+        elem = self.find(path)
+        if elem is None or not isinstance(elem, ReferenceAttribute):
+            return None
 
-    #         for value_definition in self.meta.value_definitions.values():
-    #             value = getattr(self, value_definition.name)
-
-    #         setattr(self, name, all_attributes)
-    #     return getattr(self, name)
+        return elem()
 
     def get_tree_note(self, inherited: bool) -> str:
         if inherited:
@@ -184,6 +182,18 @@ class Property(NamedElement[t.Any]):
         return None
 
 
+class Variable:
+    """Mixin for attributes that can be variables (placeholders with names instead of concrete values).
+
+    When is_variable is True, the attribute contains a variable name rather than a concrete value.
+    This is used for dynamic references and placeholders in the asset system.
+
+    Attributes:
+        is_variable: Whether this attribute is a variable (placeholder)
+        variable_name: The variable name if is_variable is True, None otherwise
+    """
+
+
 class Attribute[CacheT: ElementCache[t.Any, t.Any], ValueT](NamedElement[CacheT]):
     """Virtual base class for all attributes."""
 
@@ -193,6 +203,7 @@ class Attribute[CacheT: ElementCache[t.Any, t.Any], ValueT](NamedElement[CacheT]
         self.meta = meta
         self.cache = cache
         self.value: ValueT | None = None
+        self.is_variable = False
 
         self._value_text = node.text
 
@@ -212,6 +223,13 @@ class Attribute[CacheT: ElementCache[t.Any, t.Any], ValueT](NamedElement[CacheT]
     def is_default(self) -> bool:
         """Checks if the attribute is default."""
         return self.meta.default == self
+
+    def find_ref(self, path: str) -> Asset | None:
+        elem = self.find(path)
+        if elem is None or not isinstance(elem, ReferenceAttribute):
+            return None
+
+        return elem()
 
     def get_tree_note(self, inherited: bool = False) -> str:
         """Returns a note for the tree representation."""
@@ -252,12 +270,14 @@ class Attribute[CacheT: ElementCache[t.Any, t.Any], ValueT](NamedElement[CacheT]
             return self._value_text[key]
 
 
-class PrimitiveAttribute(Attribute["MetaPropertyCache", bool | str | float | int]):
+class PrimitiveAttribute(Attribute["MetaPropertyCache", bool | str | float | int], Variable):
     TYPE_MAP: t.ClassVar[t.Mapping[str | None, type[t.Any]]] = {
+        "Bool": bool,
         "Boolean": bool,
         "Choice": str,
         "Float": float,
         "FloatOrPercental": float,
+        "Int": int,
         "Int64": int,
         "Integer": int,
         "ScriptId": str,
@@ -265,15 +285,33 @@ class PrimitiveAttribute(Attribute["MetaPropertyCache", bool | str | float | int
         "UnsignedInt64": int,
     }
 
-    def __init__(self, node: et._Element, parent: AttributeParentT, meta: ValueDefinition, cache: MetaPropertyCache):
+    def __init__(
+        self,
+        node: et._Element,
+        parent: AttributeParentT,
+        meta: ValueDefinition,
+        data_type: str,
+        is_variable: bool,
+        cache: MetaPropertyCache,
+    ):
         super().__init__(node, parent, meta, cache)
+
+        self.is_variable = is_variable
+
+        self.percental = False
+        self.variable_name = None
+
+        # UI text fields - populated on-demand via get_ui_text_mapping()
+        self._ui_text_mapping = None
+        self._ui_text_mapping_loaded = False
 
         if self._value_text is None:
             self.value = None
             return
 
-        data_type = meta.data_type
-        self.percental = False
+        if self.is_variable:
+            self.variable_name = self._value_text
+            return
 
         if data_type == "FloatOrPercental":
             percental_node = node.find("Percental")
@@ -295,7 +333,7 @@ class PrimitiveAttribute(Attribute["MetaPropertyCache", bool | str | float | int
 
             return
 
-        if data_type == "Boolean":
+        if data_type.startswith("Bool"):
             self.value = parse_bool(self._value_text)
             return
 
@@ -310,6 +348,140 @@ class PrimitiveAttribute(Attribute["MetaPropertyCache", bool | str | float | int
             raise ValueError(
                 f"Unknown data type: {data_type} in {self.meta.full_path if self.is_default else self.full_path}."
             )
+
+    def resolve_inheritance(self, default: t.Self | None):
+        """Resolve inheritance, handling variable attributes specially."""
+        # Check for invalid default override
+        if self.meta.default == self and default is not None:
+            raise ValueError(f"Trying to override default attribute {self.meta.full_path} with {default.full_path}")
+
+        # If this is a variable, we have a variable name and shouldn't inherit concrete values
+        if self.is_variable:
+            return
+
+        # If default is a variable and we don't have a value, inherit the variable
+        if default is not None and self.value is None:
+            self.is_variable = default.is_variable
+            self.variable_name = default.variable_name
+            self.value = default.value
+
+    def get_ui_text_mapping(self):
+        """Get UI text mapping for this attribute (lazy loading).
+
+        Returns:
+            UITextMapping if available, None otherwise
+        """
+        if self._ui_text_mapping_loaded:
+            return self._ui_text_mapping
+
+        self._ui_text_mapping_loaded = True
+
+        # Only Choice attributes with datasets can have UI text
+        if self.meta.data_type != "Choice" or self.meta.dataset is None or self.value is None:
+            return None
+
+        # Check if UI text cache is available
+        if self.cache.ui_text_cache is None:
+            return None
+
+        with suppress(Exception):
+            # Silently ignore UI text lookup failures
+            self._ui_text_mapping = self.cache.ui_text_cache.get_ui_text(self.meta.dataset.name, str(self.value))
+
+        return self._ui_text_mapping
+
+    @property
+    def ui_text_id(self) -> int | None:
+        """Get the UI text ID for this attribute."""
+        mapping = self.get_ui_text_mapping()
+        return mapping.text_id if mapping else None
+
+    @property
+    def ui_text(self):
+        """Get the UI Text object for this attribute.
+
+        Returns:
+            Text object with localized strings, or None if not available
+        """
+        mapping = self.get_ui_text_mapping()
+        return mapping.text if mapping else None
+
+    @property
+    def ui_icon_guid(self):
+        """Get the UI icon FileNameAttribute for this attribute.
+
+        Returns:
+            FileNameAttribute with icon path, or None if not available
+        """
+        mapping = self.get_ui_text_mapping()
+        return mapping.icon if mapping else None
+
+    @property
+    def ui_text_variants(self) -> dict[str, int]:
+        """Get UI text variants (context-specific text) for this attribute."""
+        mapping = self.get_ui_text_mapping()
+        return mapping.variants if mapping else {}
+
+    @property
+    def buff_ui(self):
+        """Get BuffUI representation of this attribute.
+
+        Returns:
+            BuffUI object with icon, text, and formatted value, or None if not available
+        """
+        from assetextractor.parsing.core.uitext import BuffUI
+
+        if self.name == "RadiusEffectRangeUpgrade":
+            return None  # handeled in RadiusEffectRangeTarget
+
+        if self.cache.ui_text_cache is None or self.value is None:
+            return None
+
+        # Get property path for buff type mapping
+        if not hasattr(self, "parent") or self.parent is None or not hasattr(self.parent, "name"):
+            return None
+
+        property_name = self.parent.name
+        attr_name = self.name
+
+        try:
+            # Special handling for (Area)FertilityPercent - use text/icon from Added(Area)Fertility
+            def get_added_fertility() -> "ReferenceAttribute | None":
+                # Safely retrieve AddedAreaFertility or AddedFertility from self.parent if present, else None
+                parent = getattr(self, "parent", None)
+                if parent is not None:
+                    if hasattr(parent, "AddedAreaFertility"):
+                        return getattr(parent, "AddedAreaFertility")
+                    if hasattr(parent, "AddedFertility"):
+                        return getattr(parent, "AddedFertility")
+                return None
+
+            if attr_name.endswith("FertilityPercent") and get_added_fertility() is not None:
+                added_fertility_attr = get_added_fertility()
+                if added_fertility_attr is not None and hasattr(added_fertility_attr, "__call__"):
+                    fertility_asset = added_fertility_attr()
+                    if fertility_asset is not None:
+                        # Get text and icon from the Fertility asset
+                        text_obj = fertility_asset.text if hasattr(fertility_asset, "text") else None
+                        icon_obj = None
+
+                        if hasattr(fertility_asset, "IconFilename"):
+                            icon_obj = fertility_asset.IconFilename
+                        elif hasattr(fertility_asset, "find"):
+                            icon_filename = fertility_asset.find("Standard.IconFilename")
+                            if icon_filename:
+                                icon_obj = icon_filename
+
+                        # Format value - check if it's percental
+                        value_str = f"{self.value}%"  # no sign
+
+                        return BuffUI(icon=icon_obj, text=text_obj, value=value_str)
+
+            return self.cache.ui_text_cache.create_buff_ui(
+                property_name=property_name, attr_name=attr_name, value=self.value
+            )
+        except Exception:
+            return None
 
 
 class ColorAttribute(Attribute["MetaPropertyCache", dict[str, int] | int]):
@@ -429,6 +601,8 @@ class UpgradeAttribute(Attribute["MetaPropertyCache", float]):
         percental = node.find("Percental")
         if percental is not None:
             self.percental = parse_bool(percental.text)
+        elif self.name.endswith("IsPercent"):
+            self.percental = True
         else:
             self.percental = None
 
@@ -443,6 +617,30 @@ class UpgradeAttribute(Attribute["MetaPropertyCache", float]):
             self.value = default.value
         if self.percental is None:
             self.percental = default.percental
+
+    @property
+    def buff_ui(self):
+        """Get BuffUI representation of this upgrade attribute.
+
+        Returns:
+            BuffUI object with icon, text, and formatted value, or None if not available
+        """
+        if not self.cache.ui_text_cache or self.value is None or self.value == 0:
+            return None
+
+        # Get property path for buff type mapping
+        if not hasattr(self, "parent") or self.parent is None or not hasattr(self.parent, "name"):
+            return None
+
+        property_name = self.parent.name
+        attr_name = self.name
+
+        try:
+            return self.cache.ui_text_cache.create_buff_ui(
+                property_name=property_name, attr_name=attr_name, value=self.value, percental=self.percental
+            )
+        except Exception:
+            return None
 
 
 class FlagsAttribute(Attribute["MetaPropertyCache", list[str]]):
@@ -479,6 +677,25 @@ class FlagsAttribute(Attribute["MetaPropertyCache", list[str]]):
                     f"Index {key} out of range for {self.meta.full_path if self.is_default else self.full_path}"
                 )
             return self.value[key]
+
+    @property
+    def buff_ui(self) -> list[BuffUI] | None:
+        """Get list of BuffUI representations for all list items.
+
+        Returns:
+            List of BuffUI objects for non-zero value items
+        """
+        if self.cache.ui_text_cache is None or self.value is None:
+            return None
+
+        # Get property path for buff type mapping
+        if not hasattr(self, "parent") or self.parent is None or not hasattr(self.parent, "name"):
+            return None
+
+        property_name = self.parent.name
+        attr_name = self.name
+
+        return self.cache.ui_text_cache.create_buff_ui_flags(property_name, attr_name, self)
 
 
 class FileNameAttribute(Attribute["MetaPropertyCache", Path]):
@@ -540,6 +757,36 @@ class FileNameAttribute(Attribute["MetaPropertyCache", Path]):
 
         return str(self.value).endswith((".png", ".jpg", ".jpeg", ".tga", ".bmp", ".gif", ".dds"))
 
+    @property
+    def canonical_name(self) -> str:
+        """Generate a canonical, URL-safe name for this icon file.
+
+        Format: icon_{template}_{asset_canonical_name}
+        - template: First word of asset's template name (lowercase)
+        - asset_canonical_name: The asset's canonical name
+
+        Examples:
+            - "icon_production_resin_tapper_latium"
+            - "icon_item_dorian"
+        """
+        from assetextractor.parsing.core.assets import Asset
+
+        # Find the parent asset by traversing up the parent chain
+        current = self.parent
+        while current is not None:
+            if isinstance(current, Asset):
+                # Get asset's canonical name (without template prefix)
+                asset_canonical = current.canonical_name
+
+                return asset_canonical if asset_canonical.startswith("icon") else f"icon_{asset_canonical}"
+            if hasattr(current, "parent"):
+                current = current.parent
+            else:
+                break
+
+        # Fallback if no asset found
+        return "icon_unknown"
+
     def get_image(self) -> WandImage | None:
         """Returns the image if the file is an image."""
         if self.value is None or not self.is_image:
@@ -558,15 +805,23 @@ class FileNameAttribute(Attribute["MetaPropertyCache", Path]):
             logger.error(f"Could not load image {self.value}: {e}")
             return None
 
-    def get_data_url(self) -> str | None:
+    def get_data_url(self, compression_quality: int | None = None, scaling: float = 0.25) -> str | None:
         """Returns the data URL of the image if the file is an image."""
+        if compression_quality is not None and not (compression_quality > 0 and compression_quality <= 100):
+            raise ValueError(f"Invalid compression quality {compression_quality} (0-100)")
+
         data = self.get_image()
         if data is None:
             return None
 
         try:
             with WandImage(data) as webp_img:
+                width = webp_img.width
+                height = webp_img.height
+                webp_img.resize(int(width * scaling), int(height * scaling))  # pyright: ignore[reportUnknownMemberType]
                 webp_img.format = "webp"
+                if compression_quality is not None:
+                    webp_img.compression_quality = compression_quality
                 buffer = BytesIO()
                 webp_img.save(file=buffer)  # type: ignore
                 base64_str = base64.b64encode(buffer.getvalue()).decode("utf-8")
@@ -576,17 +831,31 @@ class FileNameAttribute(Attribute["MetaPropertyCache", Path]):
             return None
 
 
-class ReferenceAttribute(Attribute["MetaPropertyCache", "Asset"]):
+class ReferenceAttribute(Attribute["MetaPropertyCache", "Asset"], Variable):
     """Stores a reference to another asset. If the reference is invalid (i.e. the destination does not exist) the value is None."""
 
     IGNORED_VALUES = ("Human0", "Resident_tier01_atWork")
 
-    def __init__(self, node: et._Element, parent: AttributeParentT, meta: ValueDefinition, cache: MetaPropertyCache):
+    def __init__(
+        self,
+        node: et._Element,
+        parent: AttributeParentT,
+        meta: ValueDefinition,
+        is_variable: bool,
+        cache: MetaPropertyCache,
+    ):
         super().__init__(node, parent, meta, cache)
-        self.guid = (
-            0 if (self._value_text in self.IGNORED_VALUES or self._value_text is None) else int(self._value_text)
-        )
-        self.value = None  # is set in constructor of AssetCache
+
+        self.is_variable = is_variable or self._value_text in self.IGNORED_VALUES
+
+        if self.is_variable:
+            self.variable_name = self._value_text
+            self.guid = 0
+            self.value = None
+        else:
+            self.variable_name = None
+            self.guid = 0 if self._value_text is None else int(self._value_text)
+            self.value = None  # is set in constructor of AssetCache
 
     def set_reference(self, source: Asset, target: Asset | None):
         # ReferenceAttribute might be included in several assets
@@ -604,6 +873,18 @@ class ReferenceAttribute(Attribute["MetaPropertyCache", "Asset"]):
         return True
 
     def resolve_inheritance(self, default: t.Self | None):
+        """Resolve inheritance, handling variable attributes specially."""
+        # If this is a variable, we have a variable name and shouldn't inherit concrete values
+        if self.is_variable:
+            return
+
+        # If default is a variable and we don't have a guid, inherit the variable
+        if default is not None and default.is_variable and self.guid == 0:
+            self.is_variable = True
+            self.variable_name = default.variable_name
+            return
+
+        # Normal reference inheritance
         if default is not None and self.guid == 0:
             self.value = default.value
             self.guid = default.guid
@@ -640,7 +921,7 @@ class QuestAttribute(ReferenceAttribute):
     """References a quest asset and stores a boolean win_quest."""
 
     def __init__(self, node: et._Element, parent: AttributeParentT, meta: ValueDefinition, cache: MetaPropertyCache):
-        super().__init__(node, parent, meta, cache)
+        super().__init__(node, parent, meta, is_variable=False, cache=cache)
         guid = node.get("Quest")
         self.guid = 0 if guid is None else int(guid)
 
@@ -711,8 +992,143 @@ class ListItem:
     @property
     def property_path(self) -> str:
         if self._property_path is None:
-            self._property_path = f"{self.parent.full_path}[{self.index}]"
+            self._property_path = f"{self.parent.property_path}[{self.index}]"
         return self._property_path
+
+    def get(self, name: str) -> NamedElement[t.Any] | None:
+        """Returns the element with the given name or None if it does not exist."""
+        if hasattr(self, "__getitem__"):
+            try:
+                return self[name]  # type: ignore
+            except (KeyError, IndexError, TypeError):
+                return None
+        return None
+
+    def find(self, path: str) -> NamedElement[t.Any] | ListItem | None:
+        """Parses dot seperated list of names to find the element.
+
+        Returns None if the path is not found.
+        """
+        parts = path.split(".")
+        elem = self
+        i = 0
+        while i < len(parts) and (elem := elem.get(parts[i])):
+            i += 1
+
+        return elem if i == len(parts) else None
+
+    def find_ref(self, path: str) -> Asset | None:
+        """Follow path and return an asset if valid, is a reference, and exists.
+
+        Returns None otherwise.
+        """
+        elem = self.find(path)
+        if elem is None or not isinstance(elem, ReferenceAttribute):
+            return None
+
+        return elem()
+
+    @property
+    def ui_text(self) -> str | None:
+        """Get formatted UI text for this list item with placeholders filled.
+
+        Deprecated: Use buff_ui property instead.
+
+        Returns:
+            Formatted text string, or None if not applicable
+        """
+        buff_ui_obj = self.buff_ui
+        if buff_ui_obj and buff_ui_obj.text:
+            if isinstance(buff_ui_obj.text, str):
+                return buff_ui_obj.text
+            return str(buff_ui_obj.text)
+        return None
+
+    @property
+    def buff_ui(self):
+        """Get BuffUI representation for this list item with formatted text.
+
+        Returns:
+            BuffUI object with icon and formatted text, or None if not applicable
+        """
+        from assetextractor.parsing.core.uitext import BuffUI
+
+        try:
+            # Get the UI text cache from the asset cache
+            ui_text_cache = self.cache.ui_text_cache
+
+            if ui_text_cache is None:
+                logger.debug(f"ui_text_cache not found on cache for {self.full_path}")
+                return None
+
+            # Determine buff type from parent path
+            parent_path = self.parent.property_path if hasattr(self.parent, "property_path") else ""
+
+            logger.debug(f"ListItem.buff_ui - parent_path: {parent_path}")
+
+            # Extract the property name from path
+            if "." not in parent_path:
+                return None
+
+            path_parts = parent_path.split(".")
+            if len(path_parts) < 2:
+                return None
+
+            property_name = path_parts[-2]  # e.g., "FactoryUpgrade"
+            attr_name = path_parts[-1]  # e.g., "AdditionalOutput"
+
+            # Get buff type name
+            buff_type = ui_text_cache.get_buff_type_name(property_name, attr_name)
+            if not buff_type or buff_type not in ui_text_cache.buff_text_structs:
+                return None
+
+            buff_info = ui_text_cache.buff_text_structs[buff_type]
+            buff_struct = buff_info["struct"]
+
+            # Get icon from buff struct (if available)
+            icon_obj = None
+            try:
+                # Special handling for BuffResidenceProvidedNeedText - get icon from ProvidedNeed asset
+                if buff_type == "BuffResidenceProvidedNeedText":
+                    need_asset = self.find_ref("ProvidedNeed")
+
+                    if need_asset:
+                        # Get icon from Need asset's Standard.IconFilename
+                        icon_obj = need_asset.icon
+
+                # Special handling for BuffOutputWorkforce - get icon from WorkforceGUID asset
+                elif buff_type == "BuffOutputWorkforce":
+                    workforce_asset = self.find_ref("WorkforceGUID")
+                    if workforce_asset:
+                        # Get icon from Workforce asset's Standard.IconFilename
+                        icon_obj = workforce_asset.icon
+
+                # Default: try to find Icon in buff struct
+                elif hasattr(buff_struct, "find") and not isinstance(buff_struct, TextAttribute):
+                    icon_attr = buff_struct.find("Icon")
+                    icon_obj = ui_text_cache._get_icon(icon_attr)
+            except Exception:
+                # Icon lookup failed, continue without icon
+                pass
+
+            # Special handling for AdditionalOutput - use _format_additional_factory_output directly
+            if attr_name == "AdditionalOutput" and buff_type == "BuffAdditionalFactoryOutput":
+                formatted_text = ui_text_cache._format_additional_factory_output(self, buff_info)
+            else:
+                # Fall back to generic format_buff_text
+                formatted_text = ui_text_cache.format_buff_text(buff_type, self)
+
+            if formatted_text:
+                return BuffUI(
+                    icon=icon_obj,
+                    text=formatted_text,
+                    value="",  # Value is embedded in formatted text
+                )
+
+            return None
+        except Exception as e:
+            logger.debug(f"Error in ListItem.buff_ui: {e}")
+            return None
 
     def get_tree_note(self, inherited: bool = False) -> str:
         """Returns a note for the tree representation."""
@@ -834,6 +1250,11 @@ class ListAttribute(Attribute["MetaPropertyCache", list[ListItem]]):
         for attribute in self.value:
             yield attribute
 
+    def __len__(self) -> int:
+        """Returns the number of items in the list."""
+        assert self.value is not None
+        return len(self.value)
+
     def __getitem__(self, key: int | str) -> str | ListItem | None:
         """Allows bracket notation access to elements."""
         if self.value is None:
@@ -849,6 +1270,32 @@ class ListAttribute(Attribute["MetaPropertyCache", list[ListItem]]):
                     f"Index {key} out of range for {self.meta.full_path if self.is_default else self.full_path}"
                 )
             return self.value[key]
+
+    @property
+    def buff_ui(self):
+        """Get list of BuffUI representations for all list items.
+
+        Returns:
+            List of BuffUI objects for non-zero value items
+        """
+        result: list[BuffUI] = []
+
+        if self.cache.ui_text_cache is None or self.value is None:
+            return result
+
+        # Get property path for buff type mapping
+        if not hasattr(self, "parent") or self.parent is None or not hasattr(self.parent, "name"):
+            return result
+
+        property_name = self.parent.name
+        attr_name = self.name
+
+        # Use the centralized create_buff_ui_list method
+        buff_ui_list = self.cache.ui_text_cache.create_buff_ui_list(
+            property_name=property_name, attr_name=attr_name, list_attr=self
+        )
+
+        return buff_ui_list if buff_ui_list else result
 
     def __repr__(self) -> str:
         return self.__str__()
@@ -911,6 +1358,10 @@ class GenericDictAttribute[ValueT: Property | Attribute[t.Any, t.Any]](
     def __iter__(self) -> t.Iterator[ValueT]:
         for attribute in self._value_list:
             yield attribute
+
+    def __len__(self) -> int:
+        """Returns the number of attributes in the dictionary."""
+        return len(self._value_list)
 
     def __getitem__(self, key: int | str) -> str | ValueT | None:
         """Allows bracket notation access to elements."""
@@ -1019,6 +1470,33 @@ class DictAttribute(GenericDictAttribute[Attribute[t.Any, t.Any]]):
                         logger.debug(f"{attr.name} from {default.full_path}")
                         attr.resolve_inheritance(default_attr)
 
+    @property
+    def buff_ui(self):
+        """Get list of BuffUI representations for dict entries with non-zero values.
+
+        Returns:
+            List of BuffUI objects for non-zero value entries, using literals as keys
+        """
+        return self.get_buff_ui()
+
+    def get_buff_ui(self, in_additional_effect: bool = False):
+        result: list[BuffUI] = []
+
+        if self.cache.ui_text_cache is None or self.value is None:
+            return result
+
+        # Get property path for buff type mapping
+        if not hasattr(self, "parent") or self.parent is None or not hasattr(self.parent, "name"):
+            return result
+
+        property_name = self.parent.name
+        attr_name = self.name
+
+        # Use the centralized create_buff_ui_dict method
+        return self.cache.ui_text_cache.create_buff_ui_dict(
+            property_name=property_name, attr_name=attr_name, dict_attr=self, in_additional_effect=in_additional_effect
+        )
+
 
 class TemplateAttribute(GenericDictAttribute["Property"]):
     """Represents an AutoCreateAsset attribute. For those, their building blocks are not defined in meta properties but in templates where they indicate from which template their properties are taken. The instances of the same meta attribute might reference different templates."""
@@ -1103,7 +1581,7 @@ class TemplateAttribute(GenericDictAttribute["Property"]):
 
 
 class AttributeFactory:
-    IGNORED_TYPES = ("AssetGroup", "Matrix", "QuestGroup", "Variable", "TextGroup", "ScriptIdGroup")
+    IGNORED_TYPES = ("AssetGroup", "Matrix", "QuestGroup", "TextGroup", "ScriptIdGroup", "UiText")
 
     @staticmethod
     def create_default_node(name: str, data_type: str, default_value: str | None = None) -> et._Element:
@@ -1116,7 +1594,6 @@ class AttributeFactory:
             root.text = ""
         elif data_type in PrimitiveAttribute.TYPE_MAP or data_type in "Time":
             root.text = "0"
-        elif data_type == "Upgrade":
             child = et.Element("Value")
             child.text = "0"
             root.append(child)
@@ -1136,10 +1613,27 @@ class AttributeFactory:
             return value_definition.default
 
         dt = value_definition.data_type
+        is_variable = False
         if dt in AttributeFactory.IGNORED_TYPES:
             return Attribute(node, parent, value_definition, cache)
-        if value_definition.is_primitive:  # contains internla strings, for localized strings see TextAttribute
-            return PrimitiveAttribute(node, parent, value_definition, cache)
+
+        if dt == "Variable":
+            dt = value_definition.variable_type or "String"
+
+            if dt in AttributeFactory.IGNORED_TYPES:
+                return Attribute(node, parent, value_definition, cache)
+
+            variable_attr = node.find("IsVariable")
+            is_variable = variable_attr is not None and parse_bool(variable_attr.text)
+
+            value = node.find("Value")
+            if value is not None:
+                node = value
+
+        if (
+            dt == "String" or value_definition.is_primitive
+        ):  # contains internla strings, for localized strings see TextAttribute
+            return PrimitiveAttribute(node, parent, value_definition, dt, is_variable, cache)
 
         if dt == "Asset" and value_definition.name == "Text":
             # Handle KeyBindings where text is marked as Asset
@@ -1157,7 +1651,7 @@ class AttributeFactory:
             case "Text":
                 return TextAttribute(node, parent, value_definition, cache)
             case "Asset":
-                return ReferenceAttribute(node, parent, value_definition, cache)
+                return ReferenceAttribute(node, parent, value_definition, is_variable, cache)
             case "Quest":
                 return QuestAttribute(node, parent, value_definition, cache)
             case "FileName":

@@ -18,6 +18,7 @@ if t.TYPE_CHECKING:
     from pathlib import Path
 
     from assetextractor.parsing.core.texts import Text, TextCache
+    from assetextractor.parsing.core.uitext import UITextCache
 
 
 class ValueDefinition(NamedElement["MetaPropertyCache"]):
@@ -35,10 +36,14 @@ class ValueDefinition(NamedElement["MetaPropertyCache"]):
             raise ValueError(f"DataType missing in {self.full_path}.")
 
         self.data_type = data_type_node.text
+        self.variable_type = self.get_value("VariableType", str)
         self.parent = parent
 
         items = node.find("Items")
         self.items = [] if items is None else [ValueDefinition(item, self, cache) for item in items.iterchildren()]
+
+        needed_property = self.get_value("NeededProperty", str)
+        self.needed_property = needed_property.split(";") if needed_property else []
 
         self.allow_empty = self.get_value("AllowEmpty", bool)
 
@@ -58,7 +63,7 @@ class ValueDefinition(NamedElement["MetaPropertyCache"]):
             AttributeFactory.create_default_node(
                 self.name, self.data_type, next(iter(self.dataset.literals)) if self.dataset is not None else None
             ),
-            None,
+            parent,
             self,
             self.cache,
         )
@@ -66,7 +71,7 @@ class ValueDefinition(NamedElement["MetaPropertyCache"]):
     @property
     def is_primitive(self):
         """Represents a builtin data type."""
-        return self.data_type in PrimitiveAttribute.TYPE_MAP
+        return self.data_type in PrimitiveAttribute.TYPE_MAP or self.variable_type in PrimitiveAttribute.TYPE_MAP
 
     @property
     def is_compound(self):
@@ -131,7 +136,7 @@ class MetaProperty(NamedElement["MetaPropertyCache"]):
             "IsGameProperty",
             "ExportName",
             "Singleton",
-            "IgnoreHashingInTemplates"
+            "IgnoreHashingInTemplates",
         ]
         for child in self.node.iterchildren():
             if child.tag in ignored:
@@ -296,6 +301,7 @@ class MetaPropertyCache(ElementCache[MetaProperty, PropertyGroup]):
         self.unpacked_path = unpacked_path
         self.datasets = datasets
         self.texts = texts
+        self.ui_text_cache: UITextCache | None = None  # Will be set after AssetCache is loaded
 
         parser = et.XMLParser(huge_tree=True, remove_comments=True)
         self.tree: et._ElementTree = et.parse(str(path), parser)

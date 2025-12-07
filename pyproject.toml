@@ -1,6 +1,6 @@
 [project]
 name = "asset-extractor"
-version = "0.1.0"
+version = "2.0"
 description = "Asset extractor for Anno asset.xml files"
 readme = "README.md"
 license = "MIT"
@@ -16,6 +16,8 @@ claude = ["anthropic>=0.18.0"]
 dev = [
     "nox>=2025.2.9",
     "pyright>=1.1.397",
+    "pytest>=8.0.0",
+    "pytest-xdist>=3.5.0",
     "ruff>=0.11.2",
     "types-lxml>=2025.3.4",
     "uv>=0.6.9",
@@ -62,7 +64,7 @@ select = [
     "SIM",
     "RUF",
 ]
-ignore = ["F405", "F403", "E501", "D205"]
+ignore = ["F405", "F403", "E501", "D205", "E303"]
 fixable = ["I", "TCH", "D", "RUF"]
 
 [tool.ruff.lint.isort]
@@ -73,3 +75,21 @@ convention = "numpy"
 
 [tool.ruff.format]
 skip-magic-trailing-comma = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests/integration"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--strict-markers",
+    "--tb=short",
+    "--color=yes",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "buff_ui: tests for buff UI text mapping",
+    "pool: tests for asset pool functionality",
+    "mapping: tests for attribute mapping",
+]

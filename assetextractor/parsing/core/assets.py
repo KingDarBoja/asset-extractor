@@ -7,10 +7,12 @@ import lxml.etree as et
 
 from assetextractor.parsing.core.attributes import (
     DictAttribute,
+    FileNameAttribute,
     ListAttribute,
     Property,
     ReferenceAttribute,
     TemplateAttribute,
+    TextAttribute,
 )
 from assetextractor.parsing.core.common import ElementCache, Group, NamedElement
 from assetextractor.parsing.core.properties import Attribute, DatasetCache, MetaPropertyCache
@@ -22,6 +24,7 @@ from assetextractor.parsing.core.templates import (
     WeightedReference,
 )
 from assetextractor.parsing.core.texts import TextCache
+from assetextractor.parsing.core.uitext import BuffUI, UITextCache
 
 if t.TYPE_CHECKING:
     from pathlib import Path
@@ -55,17 +58,21 @@ class Asset(NamedElement["AssetCache"]):
         self.base_asset = None
         self.instances: dict[int, WeightedReference] = dict()
 
-        template = self.get_value("Template")
-        if template is None and self.base_asset_guid is None:
+        template_name = self.get_value("Template")
+        if template_name is None and self.base_asset_guid is None:
             raise ValueError(f"Template missing in Asset {self.name}.")
 
         self.referenced_by: dict[int, WeightedReference] = dict()
 
         self.unlocked_by_dlcs: dict[int, WeightedReference] = dict()
+        self.in_reward_pool: dict[int, WeightedReference] = dict()
+        self.in_asset_pool: dict[int, WeightedReference] = dict()
         self.named_reference_collections: NamedRefColT = {
             "Instances": self.instances,
             "Referenced by": self.referenced_by,
             "Unlocked by DLCs": self.unlocked_by_dlcs,
+            "In Reward Pools": self.in_reward_pool,
+            "In Asset Pools": self.in_asset_pool,
         }  # Referenced by, construction cost, etc.
 
         self.properties: dict[str, Property] = dict()
@@ -74,13 +81,14 @@ class Asset(NamedElement["AssetCache"]):
         if self.value_node is None:
             self.value_node = self.node
 
-        if template is None:
+        if template_name is None:
             return  # properties filled in resolve_inheritance
 
-        self.template = self.cache.templates[template]
+        template = self.cache.templates[template_name]
 
-        if self.template is None:
-            raise ValueError(f"Template {template} not found for asset {self.guid}.")
+        if template is None:
+            raise ValueError(f"Template {template_name} not found for asset {self.guid}.")
+        self.template = template
 
         self.template.add_instance(self)
 
@@ -128,8 +136,7 @@ class Asset(NamedElement["AssetCache"]):
         print("*) inherited **) default")
 
     def print_meta_tree(self):
-        if self.template is not None:
-            self.template.print_meta_tree()
+        self.template.print_meta_tree()
 
     @property
     def short_description(self) -> str:
@@ -154,6 +161,114 @@ class Asset(NamedElement["AssetCache"]):
     def is_compound(self) -> bool:
         return True
 
+    def find_ref(self, path: str) -> Asset | None:
+        """Follow path and return an asset if valid, is a reference, and exists.
+
+        Returns None otherwise.
+        """
+        elem = self.find(path)
+        if elem is None or not isinstance(elem, ReferenceAttribute):
+            return None
+
+        return elem()
+
+    @property
+    def icon(self) -> FileNameAttribute | None:
+        icon = self.find("Standard.IconFilename")
+        if isinstance(icon, FileNameAttribute) and icon.is_image:
+            return icon
+        return None
+
+    @property
+    def canonical_name(self) -> str:
+        """Generate a canonical, URL-safe name for this asset.
+
+        Format: {template_word}_{cleaned_name}[_{region}]
+        - template_word: First word of template name (lowercase)
+        - cleaned_name: English name cleaned for URLs
+        - region: For production buildings, the associated region
+
+        Examples:
+            - "production_resin_tapper_latium" (Production Area with Roman region)
+            - "item_dorian" (ItemWithBoost)
+        """
+        import re
+
+        def clean_name(text: str) -> str:
+            """Clean a name to be URL-safe."""
+            # Take first part before comma
+            text = text.split(",")[0].strip()
+            # Convert to lowercase and replace non-alphanumeric with underscores
+            text = re.sub(r"[^a-z0-9]+", "_", text.lower())
+            # Remove leading/trailing underscores
+            text = text.strip("_")
+            # Replace multiple underscores with single
+            text = re.sub(r"_+", "_", text)
+            return text
+
+        def get_region_canonical_name(region_code: str) -> str:
+            """Get canonical region name from region code using UITextCache."""
+            # Try to get region name from UITextCache
+            if self.cache.properties.ui_text_cache is not None:
+                ui_mapping = self.cache.properties.ui_text_cache.get_ui_text("Region", region_code)
+                if ui_mapping is not None and ui_mapping.text is not None and "english" in ui_mapping.text.values:
+                    region_name = ui_mapping.text.values["english"]
+                    return clean_name(region_name)
+
+            # Fallback to region code
+            return region_code.lower()
+
+        # Get template first word (handle both "Production Area" and "ItemWithBoost")
+        if self.template:
+            template_name = self.template.name
+
+            if template_name.startswith("SlotFactoryBuilding"):
+                template_name = "Production"
+
+            # Try splitting by space first
+            if " " in template_name:
+                template_word = template_name.split()[0].lower()
+            else:
+                # Extract first CamelCase word
+                match = re.match(r"^[A-Z][a-z]*", template_name)
+                template_word = match.group(0).lower() if match else template_name.lower()
+        else:
+            template_word = "asset"
+
+        # Get English name
+        english_name = ""
+        text = self.text
+        tech = self.find("Tech.TechName")
+        if isinstance(tech, TextAttribute):
+            text = tech()
+        if text and "english" in text.values:
+            english_name = text.values["english"]
+        elif self.name:
+            english_name = self.name
+
+        # Clean the name
+        cleaned = clean_name(english_name) if english_name else clean_name(self.name or "None")
+
+        # Build canonical name parts
+        parts = [cleaned] if cleaned.startswith(template_word) else [template_word, cleaned]
+
+        # For production buildings, add region
+        if template_word == "production":
+            try:
+                regions_attr = self.find("Building.AssociatedRegions")
+                if regions_attr is not None:
+                    region_list = regions_attr()  # type: ignore
+                    if isinstance(region_list, list) and len(region_list) > 0:  # type: ignore
+                        # Get first region
+                        region_code = str(region_list[0])  # type: ignore
+                        # Get canonical region name
+                        region_name = get_region_canonical_name(region_code)
+                        parts.append(region_name)
+            except (AttributeError, TypeError, ValueError):
+                pass
+
+        return "_".join(parts)
+
     def __getitem__(self, key: str) -> Property | None:
         """Allows bracket notation access to elements."""
         return self.properties.get(key)
@@ -171,6 +286,190 @@ class Asset(NamedElement["AssetCache"]):
 
     def __str__(self) -> str:
         return self.short_description
+
+    @property
+    def buff_ui(self) -> list["BuffUI"]:
+        """Get all BuffUI representations from all attributes in this asset.
+
+        This recursively traverses all properties and attributes to collect
+        BuffUI objects that represent the asset's effects/buffs.
+
+        Returns:
+            List of BuffUI objects from all attributes with buff UI representations
+        """
+        return self.get_buff_ui()
+
+    def get_buff_ui(self, is_additional_effect: bool = False) -> list["BuffUI"]:
+        result: list[BuffUI] = []
+
+        buff_list = self.find("Effect.Buffs")
+        if isinstance(buff_list, ListAttribute):
+            for buff in buff_list:
+                ref = buff.find_ref("GUID")
+                if isinstance(ref, Asset):
+                    result.extend(ref.get_buff_ui(is_additional_effect))
+
+            return result
+
+        def process_property(prop: Property) -> None:
+            """Recursively process a property and its nested content."""
+            # Process nested properties
+            for nested_prop in prop.properties.values():
+                process_property(nested_prop)
+
+            # Process attributes
+            for attr in prop.attributes.values():
+                process_attribute(attr)
+
+        def process_attribute(attr: Attribute[t.Any, t.Any]) -> None:
+            """Process an attribute and collect its BuffUI."""
+            buff_ui_list: list[BuffUI] | None = None
+            buff_ui_value: BuffUI | None = None
+
+            if isinstance(attr(), Asset) and attr.name == "AdditionalFunctionalEffect" and not is_additional_effect:
+                buff_ui_list = attr().get_buff_ui(True)
+            elif hasattr(attr, "buff_ui"):
+                if isinstance(attr, DictAttribute):
+                    buff_ui_list = attr.get_buff_ui(is_additional_effect)
+                elif isinstance(attr, ListAttribute):
+                    buff_ui_list = attr.buff_ui
+                else:
+                    val = attr.buff_ui  # pyright: ignore
+                    if isinstance(val, BuffUI):
+                        buff_ui_value = val
+
+            if buff_ui_value is not None:
+                # PrimitiveAttribute, UpgradeAttribute return single BuffUI
+                result.append(buff_ui_value)
+
+            if buff_ui_list is not None:
+                # ListAttribute, FlagsAttribute, DictAttribute return lists
+                result.extend(buff_ui_list)
+
+            # Recursively process compound attributes
+            if isinstance(attr, Property):
+                process_property(attr)
+            elif isinstance(attr, DictAttribute):
+                # DictAttribute.buff_ui already handles entries
+                pass
+            elif isinstance(attr, TemplateAttribute):
+                for nested_prop in attr._value_list:
+                    process_property(nested_prop)
+            elif isinstance(attr, ListAttribute):
+                # ListAttribute.buff_ui already handles its items
+                pass
+
+        # Start traversal from all top-level properties
+        for prop in self.properties.values():
+            process_property(prop)
+
+        return result
+
+    def pool_assets(self, cumulative_probability: float = 1.0, visited: set[int] | None = None) -> dict["Asset", float]:
+        """Recursively flatten pool tree to get weighted leaf assets with probabilities.
+
+        Args:
+            cumulative_probability: Probability accumulated from parent pools (0.0 to 1.0)
+            visited: Set of pool GUIDs already visited (cycle detection)
+
+        Returns:
+            Dict mapping Asset → probability (cumulative probability of selecting this asset)
+        """
+        # Initialize tracking
+        if visited is None:
+            visited = set()
+
+        # Cycle detection
+        if self.guid in visited:
+            return {}
+
+        visited.add(self.guid)
+        result: dict[Asset, float] = {}
+
+        # Check if this asset is a pool
+        if "Pool" not in self.template.name:
+            return {self: cumulative_probability}
+
+        # Determine pool type and get entries
+        entries = None
+        is_reward_pool = False
+
+        if "RewardPool" in self.template.name:
+            is_reward_pool = True
+            with suppress(AttributeError, Exception):
+                entries = self.find("RewardPool.ItemsPool")
+        elif "AssetPool" in self.template.name:
+            with suppress(AttributeError, Exception):
+                entries = self.find("AssetPool.AssetList")
+
+        # If no entries found, return empty dict
+        if entries is None or not isinstance(entries, ListAttribute) or len(entries) == 0:
+            return {}
+
+        # Calculate total weight for normalization
+        total_weight = 0.0
+        if is_reward_pool:
+            for entry in entries:
+                try:
+                    if entry.find_ref("ItemLink") is not None:
+                        weight_attr = entry.find("Weight")
+                        val = weight_attr()  # pyright: ignore
+                        weight = val if isinstance(val, int | float) else 1.0
+                        total_weight += weight
+                except (AttributeError, Exception):
+                    pass
+        else:  # AssetPool
+            for entry in entries:
+                try:
+                    if entry.find_ref("Asset") is not None:
+                        total_weight += 1.0
+                except (AttributeError, Exception):
+                    pass
+
+        # If total weight is zero, return empty dict
+        if total_weight == 0:
+            return {}
+
+        # Process each entry
+        for entry in entries:
+            try:
+                # Get referenced asset
+                ref_asset = entry.find_ref("ItemLink") if is_reward_pool else entry.find_ref("Asset")
+
+                if ref_asset is None:
+                    continue
+
+                # Get weight
+                weight = 1.0
+                if is_reward_pool:
+                    weight_attr = entry.find("Weight")
+                    if weight_attr is not None:
+                        val = weight_attr()  # pyright: ignore
+
+                        if isinstance(val, int | float):
+                            weight = val
+
+                # Calculate local probability
+                local_prob = weight / total_weight
+
+                # Calculate new cumulative probability
+                new_prob = cumulative_probability * local_prob
+
+                # Recursively call pool_assets
+                child_results = ref_asset.pool_assets(new_prob, visited.copy())
+
+                # Merge results with probability accumulation
+                for asset, prob in child_results.items():
+                    if asset in result:
+                        result[asset] += prob  # Accumulate probabilities
+                    else:
+                        result[asset] = prob
+
+            except (AttributeError, Exception):
+                # Skip entries that cause errors
+                continue
+
+        return result
 
 
 class AssetGroup(Group["AssetCache"]):
@@ -236,6 +535,19 @@ class AssetCache(ElementCache[t.Any]):
             self.resolve_references(asset)
 
         self.resolve_dlc_unlocks()
+
+        # Initialize UI text cache after all assets are loaded
+        self._initialize_ui_text_cache()
+
+        # Build pool references after all assets and references are resolved
+        try:
+            self._build_pool_references()
+        except Exception as e:
+            import logging
+
+            logger = logging.getLogger("parsing.assets")
+            logger.warning(f"Failed to build pool references: {e}")
+            # Non-critical, continue without pool references
 
     def add(self, element: Asset):
         if self.key_type is str:
@@ -306,6 +618,103 @@ class AssetCache(ElementCache[t.Any]):
                     weighted_reference = WeightedReference(source=asset, target=dlc)
                     asset.unlocked_by_dlcs[dlc.guid] = weighted_reference
 
+    def _initialize_ui_text_cache(self):
+        """Initialize UI text cache after all assets are loaded.
+
+        This must be called after all assets and references are resolved,
+        as it needs to access configuration assets to build lookup tables.
+
+        Note: Since assets are already loaded, this will not automatically attach
+        UI text to existing PrimitiveAttributes. They will only be attached to
+        attributes created after this point (which should be none in normal usage).
+        """
+        import logging
+
+        logger = logging.getLogger("parsing.assets")
+        logger.info("Initializing UI text cache...")
+
+        try:
+            ui_cache = UITextCache(self)
+            self.properties.ui_text_cache = ui_cache
+            logger.info(f"UI text cache initialized with {len(ui_cache)} mappings")
+        except Exception as e:
+            logger.warning(f"Failed to initialize UI text cache: {e}")
+            # Non-critical, continue without UI text cache
+            self.properties.ui_text_cache = None
+
+    def _build_pool_references(self):
+        """Build reverse pool references for all assets.
+
+        Only includes "root pools" - pools that are directly referenced by non-pool assets.
+        Subpools (pools only referenced by other pools) are not tracked separately.
+        """
+        import logging
+
+        logger = logging.getLogger("parsing.assets")
+        logger.info("Building pool references...")
+
+        # Find all pool assets
+        pool_assets: list[Asset] = []
+        for asset in self.elements.values():
+            if "Pool" in asset.template.name:
+                pool_assets.append(asset)
+
+        # Identify root pools and flatten them
+        root_reward_pools: list[Asset] = []
+        root_asset_pools: list[Asset] = []
+
+        for pool in pool_assets:
+            # Check if this pool is referenced by any non-pool asset
+            is_root_pool = False
+            for reference in pool.referenced_by.values():
+                if "Pool" not in reference.source.template.name:
+                    is_root_pool = True
+                    break
+
+            if not is_root_pool:
+                continue  # This is a subpool, skip it
+
+            # Determine pool type
+            if "RewardPool" in pool.template.name:
+                root_reward_pools.append(pool)
+            elif "AssetPool" in pool.template.name:
+                root_asset_pools.append(pool)
+
+        # Flatten root reward pools
+        for pool in root_reward_pools:
+            try:
+                pool_results = pool.pool_assets()
+
+                # Build WeightedReference objects
+                for leaf_asset, probability in pool_results.items():
+                    weighted_ref = WeightedReference(source=pool, target=leaf_asset, weight=probability)
+                    leaf_asset.in_reward_pool[pool.guid] = weighted_ref
+            except Exception as e:
+                logger.warning(f"Failed to flatten reward pool {pool.guid} ({pool.name}): {e}")
+
+        # Flatten root asset pools
+        for pool in root_asset_pools:
+            try:
+                pool_results = pool.pool_assets()
+
+                # Build WeightedReference objects
+                for leaf_asset, probability in pool_results.items():
+                    weighted_ref = WeightedReference(source=pool, target=leaf_asset, weight=probability)
+                    leaf_asset.in_asset_pool[pool.guid] = weighted_ref
+            except Exception as e:
+                logger.warning(f"Failed to flatten asset pool {pool.guid} ({pool.name}): {e}")
+
+        # Log statistics
+        leaf_assets_with_reward_pools = sum(1 for asset in self.elements.values() if len(asset.in_reward_pool) > 0)
+        leaf_assets_with_asset_pools = sum(1 for asset in self.elements.values() if len(asset.in_asset_pool) > 0)
+
+        logger.info(
+            f"Pool references built: {len(root_reward_pools)} root reward pools, "
+            f"{len(root_asset_pools)} root asset pools, "
+            f"{leaf_assets_with_reward_pools} leaf assets in reward pools, "
+            f"{leaf_assets_with_asset_pools} leaf assets in asset pools"
+        )
+
     @staticmethod
     def load(config: Config) -> AssetCache:
         """Loads the asset cache from the given config."""
@@ -317,7 +726,7 @@ class AssetCache(ElementCache[t.Any]):
             game_asset_dir = game_dir / "asset"
 
             # ignore old game assets
-            #if not game_asset_dir.exists():
+            # if not game_asset_dir.exists():
             game_asset_dir = None
             gui_dir = unpacked_path / "data/base/config/gui"
         else:

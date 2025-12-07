@@ -26,11 +26,22 @@ The project is organized into three main modules under `assetextractor/`:
   - **Attributes** (`attributes.py`): Contain concrete values with type definitions
   - **Common** (`common.py`): Base classes and shared functionality
   - **Texts** (`texts.py`): Localization support
+  - **UIText** (`uitext.py`): UI text mapping system for buff attributes
 
 ### 3. Conversion (`assetextractor/conversion/`)
 - **Purpose**: Generate excerpts in different formats (HTML, JSON)
 - **Asset Browser** (`assetbrowser/`): HTML converter using Jinja2 templates
 - **Status**: Partially implemented
+
+### 4. Versioning (`assetextractor/versioning/`)
+- **Purpose**: Track asset changes across game versions using SQLite database
+- **Key Features**:
+  - Create version snapshots with XML hash tracking
+  - Compare versions to detect added/changed/deleted assets
+  - Export version data to CSV/JSON
+  - Query version history with statistics
+- **Database**: Stores in `versioning/anno117/assets.db`
+- **Status**: Fully implemented
 
 ## Development Commands
 
@@ -48,7 +59,7 @@ uv sync --extra jupyter
 
 ### Code Quality
 ```bash
-# Run all checks (formatting, linting, type checking)
+# Run all checks (formatting, linting, type checking, tests)
 uv run nox
 
 # Format code and fix issues
@@ -62,6 +73,32 @@ uv run ruff format .
 uv run ruff check . --fix
 ```
 
+### Testing
+```bash
+# Run all tests
+test.cmd
+# Or: uv run nox -s test
+# Or: uv run pytest
+
+# Run with verbose output
+test.cmd -v
+
+# Run specific test category
+test.cmd -m buff_ui    # Buff UI tests only
+test.cmd -m pool       # Pool tests only
+test.cmd -m mapping    # Mapping tests only
+
+# Run tests matching keyword
+test.cmd -k "recruitment"
+
+# Exit on first failure
+test.cmd -x
+
+# See all testing options
+test.cmd --help
+# Or: see tests/README.md for comprehensive testing guide
+```
+
 ### Running the Project
 ```bash
 # Extract RDA files (run after game updates)
@@ -73,6 +110,24 @@ uv run main
 
 # Run asset browser converter directly
 uv run assetextractor/conversion/assetbrowser/convert.py
+```
+
+### Asset Versioning
+```bash
+# Create version snapshot
+uv run python -m assetextractor.versioning snapshot "1.0.0" --description "Launch version"
+
+# Compare two versions
+uv run python -m assetextractor.versioning diff "1.0.0" "1.0.1"
+
+# Export version data to CSV/JSON
+uv run python -m assetextractor.versioning export --output versions.csv
+
+# Show version history
+uv run python -m assetextractor.versioning history --verbose
+
+# Get help for any command
+uv run python -m assetextractor.versioning [command] --help
 ```
 
 ## Configuration
@@ -109,10 +164,15 @@ uv run assetextractor/conversion/assetbrowser/convert.py
 - **Print Tree**: Use `asset.print_tree()` to see complete resolved inheritance chain
 
 ## Testing and Analysis
+- The project uses **pytest** for integration testing
+- Test suite location: `tests/integration/`
+- Shared fixtures: `tests/conftest.py` (provides `assets`, `config`, `ui_text_cache`, `texts`)
+- Run tests with: `test.cmd` or `uv run nox -s test` or `uv run pytest`
+- See `tests/README.md` for comprehensive testing guide
+- When creating scripts to track the program behaviour, always put them into `tests/debugging`
+- When creating scripts to test the correct output, always put them into `tests/integration`. The script should become a permanent test case after the feature was implemented.
+- New tests should follow pytest conventions and use the shared fixtures from `conftest.py`
 
-The project includes several Jupyter notebooks for interactive development:
-- `browsing.ipynb`: Main development interface
-- `test_*.ipynb`: Various testing notebooks for specific functionality
 
 ## VS Code Integration
 

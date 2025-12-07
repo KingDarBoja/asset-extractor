@@ -93,7 +93,7 @@ class NamedElement[CacheT: "ElementCache[t.Any, t.Any]"]:
     def property_path(self) -> str:
         """Returns the path of properties (seperated '.') starting from the group."""
         if self._property_path is None:
-            if self.parent is None:
+            if self.parent is None or isinstance(self.parent, Group):
                 self._property_path = self.identifier
             else:
                 parent_path = self.parent.property_path
@@ -103,7 +103,6 @@ class NamedElement[CacheT: "ElementCache[t.Any, t.Any]"]:
                     self._property_path = f"{self.parent.property_path}.{self.identifier}"
         return self._property_path
 
-    # FIXME: what types can T be? It would probably be ideal to introduce a KeyType union type
     def get_value[T: str | int | bool | float](self, xml_name: str, dtype: type[T] = str) -> T | None:
         """Returns the value of the element with the given name converted to dtype.
 
@@ -127,7 +126,7 @@ class NamedElement[CacheT: "ElementCache[t.Any, t.Any]"]:
         parts = path.split(".")
         elem = self
         i = 0
-        while i < len(parts) and (elem := elem.get(parts[i])):
+        while i < len(parts) and (elem := elem.get(parts[i])) is not None:
             i += 1
 
         return elem if i == len(parts) else None

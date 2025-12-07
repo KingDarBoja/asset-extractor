@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Version Changes: {{ version1 }} -> {{ version2 }}</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        /* Additional styles for version report */
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        h1 {
+            color: #333;
+            border-bottom: 3px solid #4CAF50;
+            padding-bottom: 10px;
+        }
+
+        .summary {
+            background: #f9f9f9;
+            padding: 20px;
+            margin: 20px 0;
+            border-left: 4px solid #4CAF50;
+        }
+
+        .summary h3 {
+            margin-top: 0;
+        }
+
+        .summary ul {
+            list-style: none;
+            padding: 0;
+            margin: 10px 0;
+        }
+
+        .summary li {
+            padding: 5px 0;
+            font-size: 16px;
+        }
+
+        .added {
+            color: #2e7d32;
+            font-weight: bold;
+        }
+
+        .changed {
+            color: #f57c00;
+            font-weight: bold;
+        }
+
+        .deleted {
+            color: #c62828;
+            font-weight: bold;
+        }
+
+        .change-section {
+            margin: 30px 0;
+        }
+
+        .change-section h3 {
+            border-bottom: 2px solid #ddd;
+            padding-bottom: 8px;
+            margin-bottom: 15px;
+        }
+
+        .change-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .change-table th {
+            background-color: #4CAF50;
+            color: white;
+            padding: 12px;
+            text-align: left;
+            font-weight: bold;
+        }
+
+        .change-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .change-table tr:hover {
+            background-color: #f5f5f5;
+        }
+
+        .change-table tr:nth-child(even) {
+            background-color: #fafafa;
+        }
+
+        .change-table a {
+            color: #1976d2;
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .change-table a:hover {
+            text-decoration: underline;
+        }
+
+        .footer {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+            text-align: center;
+            color: #666;
+        }
+
+        .footer a {
+            color: #4CAF50;
+            text-decoration: none;
+            font-weight: bold;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+
+        .empty-message {
+            color: #666;
+            font-style: italic;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .template-section {
+            margin: 40px 0;
+            padding: 20px;
+            background: #fafafa;
+            border-left: 5px solid #4CAF50;
+        }
+
+        .template-header {
+            color: #2c3e50;
+            margin: 0 0 15px 0;
+            font-size: 24px;
+            border-bottom: 2px solid #4CAF50;
+            padding-bottom: 10px;
+        }
+
+        .template-summary {
+            font-size: 18px;
+            margin-bottom: 20px;
+            padding: 10px;
+            background: white;
+            border-radius: 4px;
+        }
+
+        .template-summary span {
+            margin-right: 20px;
+            padding: 5px 10px;
+            border-radius: 3px;
+            font-weight: bold;
+        }
+
+        .template-summary .added {
+            background-color: #e8f5e9;
+        }
+
+        .template-summary .changed {
+            background-color: #fff3e0;
+        }
+
+        .template-summary .deleted {
+            background-color: #ffebee;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Version Changes Report</h1>
+        <h2>{{ version1 }} -> {{ version2 }}</h2>
+
+        <div class="summary">
+            <h3>Overall Summary (Items and Pools)</h3>
+            <ul>
+                <li class="added">Added: {{ overall_summary.added_count }} assets</li>
+                <li class="changed">Changed: {{ overall_summary.changed_count }} assets</li>
+                <li class="deleted">Deleted: {{ overall_summary.deleted_count }} assets</li>
+            </ul>
+        </div>
+
+        {% if template_diffs %}
+            {% for template_name, diff in template_diffs.items() %}
+                {% set has_changes = diff.summary.added_count > 0 or diff.summary.changed_count > 0 or diff.summary.deleted_count > 0 %}
+                {% if has_changes %}
+                <div class="template-section">
+                    <h2 class="template-header">{{ template_name }}</h2>
+                    <div class="template-summary">
+                        <span class="added">+{{ diff.summary.added_count }}</span>
+                        <span class="changed">~{{ diff.summary.changed_count }}</span>
+                        <span class="deleted">-{{ diff.summary.deleted_count }}</span>
+                    </div>
+
+                    {% if diff.added %}
+                    <div class="change-section">
+                        <h3 class="added">Added ({{ diff.summary.added_count }})</h3>
+                        <table class="change-table">
+                            <thead>
+                                <tr>
+                                    <th>GUID</th>
+                                    <th>Name</th>
+                                    <th>Link</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for asset in diff.added %}
+                                <tr>
+                                    <td>{{ asset.guid }}</td>
+                                    <td>{{ asset_names.get(asset.guid, asset.name or 'N/A') }}</td>
+                                    <td><a href="assets/{{ asset.guid }}.html" target="_blank">View Asset</a></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% endif %}
+
+                    {% if diff.changed %}
+                    <div class="change-section">
+                        <h3 class="changed">Changed ({{ diff.summary.changed_count }})</h3>
+                        <table class="change-table">
+                            <thead>
+                                <tr>
+                                    <th>GUID</th>
+                                    <th>Name</th>
+                                    <th>Old Hash</th>
+                                    <th>New Hash</th>
+                                    <th>Link</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for asset in diff.changed %}
+                                <tr>
+                                    <td>{{ asset.guid }}</td>
+                                    <td>{{ asset_names.get(asset.guid, asset.name or 'N/A') }}</td>
+                                    <td><code>{{ asset.old_hash[:8] }}...</code></td>
+                                    <td><code>{{ asset.new_hash[:8] }}...</code></td>
+                                    <td><a href="assets/{{ asset.guid }}.html" target="_blank">View Asset</a></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% endif %}
+
+                    {% if diff.deleted %}
+                    <div class="change-section">
+                        <h3 class="deleted">Deleted ({{ diff.summary.deleted_count }})</h3>
+                        <table class="change-table">
+                            <thead>
+                                <tr>
+                                    <th>GUID</th>
+                                    <th>Name</th>
+                                    <th>Hash</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for asset in diff.deleted %}
+                                <tr>
+                                    <td>{{ asset.guid }}</td>
+                                    <td>{{ asset_names.get(asset.guid, asset.name or 'N/A') }}</td>
+                                    <td><code>{{ asset.hash[:8] }}...</code></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endif %}
+            {% endfor %}
+        {% else %}
+        <div class="empty-message">
+            <p>No changes detected for Items and Pools between these versions.</p>
+        </div>
+        {% endif %}
+
+        <div class="footer">
+            <p><a href="index.html">Return to Asset Browser</a></p>
+            <p>Generated by Asset Versioning System</p>
+        </div>
+    </div>
+</body>
+</html>

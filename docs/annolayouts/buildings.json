@@ -1,0 +1,64 @@
+{
+    "assetTypes" : ["Production", "Production Field", "SlotFactoryBuilding7", "Production Area", "ResidenceBuilding", "PublicServiceBuilding", "HarborWarehouse", "AqueductDistributor",
+                    "Production Marsh", "Production Marsh Area", "Production Marsh Pasture", "UnitCamp", "MiniInstitutionBuilding", "MonumentEventBuilding", "Monument", "RecruitmentBuilding",
+                    "MilitaryTowerUnit", "MilitaryGate", "ProductionModuleSilo", "VillaUrban", "IrrigationPropagationSource_Marsh"],
+    "category" : "products",
+    "outputFileName" : "sandbox/buildings.json",
+    "assetType" : "building",
+    "attributes" : [
+        { "name" :  "guid", "jsonPath" : ["Values","Standard","GUID"], "required" : 1},
+        { "name" :  "fileName", "jsonPath" : ["Values","Standard","IconFilename"], "required" : 1},
+        { "name" :  "category", "jsonPath" : ["Values","Building","BuildingCategoryName"]},
+        { "name" :  "associatedRegions", "jsonPath" : ["Values","Building","AssociatedRegions"]},
+        { "name" :  "functionalEffect", "jsonPath" : ["Values","Building","FunctionalEffect"]},
+        { "name" :  "buildingType", "jsonPath" : ["Values","Building","BuildingType"]},
+        { "name" :  "terrainType", "jsonPath" : ["Values","Building","TerrainType"]},
+        { "name" :  "effectRadius", "jsonPath" : ["Values","EffectSource","RadiusDistance"]},
+        { "name" :  "publicServiceEffect", "jsonPath" : ["Values","PublicService","PublicServiceEffect"]},
+        { "name" :  "rawResourceType", "jsonPath" : ["Values","Factory7","RawResourceType"]},
+        { "name" :  "neededFertility", "jsonPath" : ["Values","Factory7","NeededFertility"]},
+        { "name" :  "slotType", "jsonPath" : ["Values","Slot","SlotType"]},
+        { "name" :  "monumentUpgradeTarget", "jsonPath" : ["Values","Monument","UpgradeTarget"]},
+        { "name" :  "romanizationType", "jsonPath" : ["Values","Romanization","RomanizationType"]},
+        { "name" :  "romanizationValue", "jsonPath" : ["Values","Romanization","RomanizationValue"]},
+       
+        { "name" :  "populationID", "jsonPath" : ["Values","Residence7","PopulationLevel"]},
+        { "name" :  "outputProduct", "jsonPath" : ["Values","FactoryBase","FactoryOutputs", "Item", "Product"]},
+        { "name" :  "freeAreaInfluenceRadius", "jsonPath" : ["Values","FreeAreaProductivity","InfluenceRadius"]},
+        { "name" :  "freeAreaNeededArea", "jsonPath" : ["Values","FreeAreaProductivity","NeededArea"]},
+        { "name" :  "freeAreaType", "jsonPath" : ["Values","FreeAreaProductivity","FreeAreaType"]},
+        { "name" :  "moduleGUID", "jsonPath" : ["Values","ModuleOwner","ConstructionOptions", "Item", "ModuleGUID"]},
+        { "name" :  "moduleLimit", "jsonPath" : ["Values","ModuleOwner","ModuleLimits", "Main", "Limit"]},
+        { "name" :  "additionalModule", "jsonPath" : ["Values","ModuleOwner","AdditionalModule"]},
+        { "name" :  "cycleTime", "jsonPath" : ["Values","FactoryBase","CycleTime"], "staticValues" : [{"value" : 30, "jsonPath" : ["Values","FactoryBase","FactoryOutputs"], "conditionValue" : "*"}]},
+        { "name" :  "aqueductConsumptionType", "jsonPath" : ["Values", "AqueductConsumer", "AqueductConsumptionType"]},
+        { "name" :  "aqueductConsumedWaterSupply", "jsonPath" : ["Values", "AqueductConsumer", "AqueductConsumedWaterSupply"]},
+        { "name" :  "aqueductProductivityBuff", "jsonPath" : ["Values", "AqueductConsumer", "AqueductConsumptionBuffEffect", "Item", "ProductivityBuff"]},
+        { "name" :  "textID", "jsonPath" : ["Values", "Text", "OasisId"]}
+    ],
+    "arrays" : [
+        { "name" : "functionalEffects", "jsonPath" : ["Values", "Building", "FunctionalEffects"], "arrayElement" : "Item", "attributes" : [
+                                            { "name" : "effect", "jsonPath" : ["FunctionalEffect"]}
+        ]},
+        { "name" : "inputs", "jsonPath" : ["Values", "FactoryBase", "FactoryInputs"], "arrayElement" : "Item", "attributes" : [
+                                            { "name" : "product", "jsonPath" : ["Product"]},
+                                            { "name" : "amount", "jsonPath" : ["Amount"]},
+                                            { "name" : "storageAmount", "jsonPath" : ["StorageAmount"]}
+        ]},
+        { "name" : "needs", "jsonPath" : ["Values", "Residence7", "NeedsList"], "arrayElement" : "Item", "attributes" : [
+                                            { "name" : "need", "jsonPath" : ["Need"]},
+                                            { "name" : "consumptionRate", "jsonPath" : ["NeedConsumptionRate"]}
+        ]},
+        { "name" : "monumentEventsCategories", "jsonPath" : ["Values", "MonumentEventBuilding", "MonumentEventsCategories"], "arrayElement" : "Item", "attributes" : [
+                                            { "name" : "eventCategory", "jsonPath" : ["EventCategory"]}
+        ]},
+        { "name" : "monumentEventsRewards", "jsonPath" : ["Values", "MonumentEventBuilding", "RewardEffectLevels"], "arrayElement" : "Item", "attributes" : [
+                                            { "name" : "rewardEffect", "jsonPath" : ["RewardEffect"]}
+        ]},
+        { "name" : "unitRecruitments", "jsonPath" : ["Values", "Recruitment", "AssemblyOptions"], "arrayElement" : "Item", "attributes" : [
+                                            { "name" : "vehicle", "jsonPath" : ["Vehicle"]}
+        ]}
+    ],
+    "modules" : ["maintenance", "costs"],
+    "excludeElements" : [100806, 668, 270044, 269851, 269850, 270044]
+}

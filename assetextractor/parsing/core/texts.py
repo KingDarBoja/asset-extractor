@@ -11,7 +11,7 @@ if t.TYPE_CHECKING:
 
     from assetextractor.parsing.core.assets import Asset
 
-    from .attributes import Attribute  # noqa: TC004 - otherwise circular import
+    from .attributes import Attribute
 
 
 class Text(NamedElement["TextCache"]):
@@ -63,12 +63,21 @@ class Text(NamedElement["TextCache"]):
 
         args: list[Text | str] = []
         for arg in list:
-            if isinstance(arg, Text):
+            if isinstance(arg, str):
                 args.append(arg)
                 continue
 
-            if isinstance(arg, Attribute):
-                args.append(str(arg))
+            if hasattr(arg, "value"):  # Check for TextAttribute (which we cannot import due to cylic imports)
+                val = getattr(arg, "value")
+                if isinstance(val, Text):
+                    arg = val
+                else:
+                    args.append(str(val))
+                    continue
+
+            if isinstance(arg, Text):
+                args.append(arg)
+                continue
 
             if hasattr(arg, "text"):
                 arg = getattr(arg, "text")

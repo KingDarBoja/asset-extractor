@@ -33,12 +33,15 @@
         {% macro render_node(node) %}
         {% if node.__class__.__name__ == "ReferenceAttribute" %}
         <span title="{{ format_value_definition(node.meta) }}">{{node.name}}:
-            {% if node() is none %}
+            {% if node.is_variable %}
+            {{ node.variable_name }} <em>(Variable)</em>
+            {% elif node() is none %}
             None
             {% else %}
             <a href="{{ node().safe_identifier }}.html" title="{{ format_value_definition(node().meta) }}">{{
-                node().short_description }}</a></span>
-        {% endif %}
+                node().short_description }}</a>
+            {% endif %}
+        </span>
         {% elif node.is_compound %}
         <span title="{{ format_value_definition(node.meta) if node.meta is defined else '' }}">{{ node.name if node.name
             else node }}</span>
@@ -55,7 +58,13 @@
                 {% endfor %}
         </ul>
         {% else %}
-        <span title="{{ format_value_definition(node.meta) if node.meta is defined else '' }}">{{ node }}</span>
+        <span title="{{ format_value_definition(node.meta) if node.meta is defined else '' }}">
+            {% if node.is_variable %}
+            {{ node.name }}: {{ node.variable_name }} <em>(Variable)</em>
+            {% else %}
+            {{ node }}
+            {% endif %}
+        </span>
         {% endif %}
         {% endmacro %}
 
@@ -72,7 +81,7 @@
         <tr>
             <th>Template</th>
             <th>Asset</th>
-            <th>Path</th>
+            <th>{% if key in ["In Reward Pools", "In Asset Pools"] %}Probability{% else %}Path{% endif %}</th>
         </tr>
         {% set sorted_refs = ref_dict.items() | sort(attribute='1.target.template.name') %}
         {% for guid, ref in sorted_refs %}
@@ -90,7 +99,11 @@
                     {{ ref.source.name if ref.source.name else ref.source.identifier }}
                 </a>
             </td>
+            {% if key in ["In Reward Pools", "In Asset Pools"] and ref.weight is not none %}
+            <td>{{ "%.2f" | format(ref.weight * 100) }}%</td>
+            {% else %}
             <td>{{ ref.path if ref.path else "-" }}</td>
+            {% endif %}
             {% else %}
             <td>
                 <a href="../templates/{{ ref.target.template.name }}.html"
@@ -104,7 +117,11 @@
                     {{ ref.target.name if ref.target.name else ref.target.identifier }}
                 </a>
             </td>
+            {% if key in ["In Reward Pools", "In Asset Pools"] and ref.weight is not none %}
+            <td>{{ "%.2f" | format(ref.weight * 100) }}%</td>
+            {% else %}
             <td>-</td>
+            {% endif %}
             {% endif %}
         </tr>
         {% endfor %}
