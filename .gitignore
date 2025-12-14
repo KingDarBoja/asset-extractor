@@ -228,6 +228,7 @@ RDAConsole/
 # Ignore paths so that everyone can safely change them for their own use
 config.json
 results/
+docs/chats/
 
 # Ruff cache
 .ruff_cache/

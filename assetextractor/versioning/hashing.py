@@ -4,9 +4,10 @@ Recursive hash calculation for asset versioning system.
 This module provides functions to calculate asset hashes that include:
 - The asset's own XML content
 - Hashes of referenced buff assets (Effect.Buffs) recursively
+- Hashes of referenced target assets (Effect.Targets) - for pools, includes GUIDs only
 - Hashes of referenced pool assets (RewardPool/AssetPool) recursively
 
-The recursive approach ensures that changes to buffs or nested pools
+The recursive approach ensures that changes to buffs, targets, or nested pools
 are reflected in the hashes of assets that reference them.
 """
 
@@ -22,15 +23,17 @@ def get_asset_hash_recursive(
     asset: Asset, visited: set[int] | None = None, hash_cache: dict[int, str] | None = None
 ) -> str:
     """
-    Calculate recursive hash including referenced buffs and pools.
+    Calculate recursive hash including referenced buffs, targets, and pools.
 
     This function computes a SHA-256 hash that includes:
     1. The asset's own canonical XML
     2. Hashes of referenced buff assets (from Effect.Buffs)
-    3. Hashes of referenced pool assets (from RewardPool/AssetPool)
+    3. Hashes/GUIDs of referenced target assets (from Effect.Targets)
+    4. Hashes of referenced pool assets (from RewardPool/AssetPool)
 
     The recursive approach ensures that:
     - Items with modified buffs show as changed
+    - Items with modified targets show as changed
     - Pools with modified nested pools show as changed
     - Pool structure changes are tracked (not item content)
 
@@ -44,6 +47,7 @@ def get_asset_hash_recursive(
 
     Note:
         - Pools only include hashes of nested POOLS, not items
+        - Target pools include only GUIDs, not full asset hashes
         - Uses visited.copy() to allow different branches to visit same nodes
         - Hash cache should be cleared between snapshot runs
     """
@@ -77,21 +81,25 @@ def get_asset_hash_recursive(
     buff_hashes = _collect_buff_hashes(asset, visited, hash_cache)
     hash_components.extend(buff_hashes)
 
-    # 3. Collect pool hashes (RewardPool/AssetPool)
+    # 3. Collect target hashes (Effect.Targets)
+    target_hashes = _collect_target_hashes(asset, visited, hash_cache)
+    hash_components.extend(target_hashes)
+
+    # 4. Collect pool hashes (RewardPool/AssetPool)
     pool_hashes = _collect_pool_hashes(asset, visited, hash_cache)
     hash_components.extend(pool_hashes)
 
-    # 4. Sort components for deterministic ordering
+    # 5. Sort components for deterministic ordering
     # Keep own XML first, sort the rest
     own_xml = hash_components[0]
     other_components = sorted(hash_components[1:])
     sorted_components = [own_xml, *other_components]
 
-    # 5. Combine and hash
+    # 6. Combine and hash
     combined = b"".join(sorted_components)
     final_hash = hashlib.sha256(combined).hexdigest()
 
-    # 6. Cache result
+    # 7. Cache result
     if hash_cache is not None:
         hash_cache[asset.guid] = final_hash
 
@@ -199,6 +207,50 @@ def _collect_pool_hashes(asset: Asset, visited: set[int], hash_cache: dict[int, 
 
     except (AttributeError, Exception):
         # Pool doesn't have the expected structure
+        pass
+
+    return hashes
+
+
+def _collect_target_hashes(asset: Asset, visited: set[int], hash_cache: dict[int, str] | None) -> list[bytes]:
+    """
+    Collect hashes of referenced target assets from Effect.Targets.
+
+    If a target is a pool, includes all pool asset GUIDs (but not the assets themselves).
+    Otherwise, recursively hashes the target asset.
+
+    Args:
+        asset: Asset object
+        visited: Set of visited GUIDs
+        hash_cache: Hash cache dict
+
+    Returns:
+        List of hash bytes to include in parent hash
+    """
+    hashes: list[bytes] = []
+
+    try:
+        # Try to get Effect.Targets list
+        targets_list = asset.find("Effect.Targets")
+
+        if targets_list and isinstance(targets_list, ListAttribute):
+            for target_entry in targets_list:
+                try:
+                    # Get the GUID attribute
+                    target_ref = target_entry.find_ref("GUID")
+
+                    # Check if it's a valid Asset
+                    if isinstance(target_ref, Asset):
+                        guids = sorted([asset.guid for asset in target_ref.pool_assets()])
+                        
+                        for guid in guids:
+                            hashes.append(str(guid).encode())
+                except (AttributeError, Exception):
+                    # Skip this target entry if it causes errors
+                    continue
+
+    except (AttributeError, Exception):
+        # Asset doesn't have Effect.Targets or it's not accessible
         pass
 
     return hashes
