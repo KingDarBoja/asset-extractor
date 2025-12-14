@@ -11,7 +11,7 @@ from pathlib import Path
 import lxml.etree as et
 from wand.image import Image as WandImage  # type: ignore
 
-from assetextractor.parsing.core.common import ElementCache, NamedElement
+from assetextractor.parsing.core.common import ElementCache, NamedElement, WeightedReference
 from assetextractor.parsing.core.texts import Text
 
 logger = logging.getLogger("parsing")
@@ -23,7 +23,7 @@ type AttributeParentT = (
 if t.TYPE_CHECKING:
     from assetextractor.parsing.core.assets import Asset
     from assetextractor.parsing.core.properties import MetaProperty, MetaPropertyCache, PropertyGroup, ValueDefinition
-    from assetextractor.parsing.core.templates import Template
+    from assetextractor.parsing.core.templates import Template, TemplateCache
     from assetextractor.parsing.core.uitext import BuffUI
 
 
@@ -76,7 +76,7 @@ class Property(NamedElement[t.Any]):
             setattr(self, name, attribute)
 
         for child in all_properties:
-            logger.info(f"Ignoring property {child.tag} without meta definition in property {self.full_path}")
+            logger.info(f"Ignoring property {child.tag} without meta definition in property {self.full_path} [{self.source}]")
 
     @property
     def is_compound(self) -> bool:
@@ -89,7 +89,7 @@ class Property(NamedElement[t.Any]):
             meta_property = parent.elements.get(str(child.tag))
 
             if meta_property is None:
-                logger.info(f"Ignoring property {parent.full_path}.{child.tag}")
+                logger.info(f"Ignoring property {parent.full_path}.{child.tag} [{parent.source}]")
                 continue
 
             # this check would lead to cyclic imports
@@ -106,13 +106,13 @@ class Property(NamedElement[t.Any]):
             #    continue
 
             if (prop := self.properties.get(meta_property.name)) is None:
-                logger.debug(f"Copy {meta_property.name} from {default.full_path}")
+                logger.debug(f"Copy {meta_property.name} from {default.full_path} [{default.source}]")
                 prop = getattr(default, meta_property.name)
                 setattr(self, meta_property.name, prop)
                 if prop is not None:
                     self.properties[meta_property.name] = prop
             else:
-                logger.debug(f"{prop.name} from {default.full_path}")
+                logger.debug(f"{prop.name} from {default.full_path} [{default.source}]")
                 prop.resolve_inheritance(getattr(default, meta_property.name))
 
         for value_definition in self.meta.value_definitions.values():
@@ -120,20 +120,20 @@ class Property(NamedElement[t.Any]):
             default_attr = default.attributes.get(name)
             if default_attr is None:
                 raise ValueError(
-                    f"Missing attribute {name} of type {value_definition.data_type} in {default.full_path} (found when updating inheritance in {self.full_path})"
+                    f"Missing attribute {name} of type {value_definition.data_type} in {default.full_path} [{default.source}] (found when updating inheritance in {self.full_path})"
                 )
 
             if (attr := self.attributes.get(name)) is None:
-                logger.debug(f"Copy {name} from {default_attr.full_path}")
+                logger.debug(f"Copy {name} from {default_attr.full_path} [{default_attr.source}]")
                 setattr(self, name, default_attr)
                 self.attributes[name] = default_attr
             else:
                 if attr.is_default:
-                    logger.debug(f"Copy {attr.name} from default {default_attr.full_path}")
+                    logger.debug(f"Copy {attr.name} from default {default_attr.full_path} [{default_attr.source}]")
                     self.attributes[name] = default_attr
                     setattr(self, name, default_attr)
                 else:
-                    logger.debug(f"{attr.name} from {default.full_path}")
+                    logger.debug(f"{attr.name} from {default.full_path} [{default.source}]")
                     attr.resolve_inheritance(default_attr)
 
     def find_ref(self, path: str) -> Asset | None:
@@ -222,7 +222,7 @@ class Attribute[CacheT: ElementCache[t.Any, t.Any], ValueT](NamedElement[CacheT]
     @property
     def is_default(self) -> bool:
         """Checks if the attribute is default."""
-        return self.meta.default == self
+        return self.meta.default == self or self.node.sourceline is None
 
     def find_ref(self, path: str) -> Asset | None:
         elem = self.find(path)
@@ -280,7 +280,6 @@ class PrimitiveAttribute(Attribute["MetaPropertyCache", bool | str | float | int
         "Int": int,
         "Int64": int,
         "Integer": int,
-        "ScriptId": str,
         "String": str,
         "UnsignedInt64": int,
     }
@@ -977,7 +976,7 @@ class ListItem:
             if default_attr is None:
                 continue
 
-            if attribute is None or value_definition.default == attribute:
+            if attribute is None or attribute.is_default:
                 setattr(self, name, default_attr)
                 self.value[name] = default_attr
             else:
@@ -1441,7 +1440,7 @@ class DictAttribute(GenericDictAttribute[Attribute[t.Any, t.Any]]):
 
                     logger.debug(f"{item.name} from {super_item.full_path}")
                     item.resolve_inheritance(super_item)
-        # TODO: Check inheritance
+ 
         elif self.meta.dataset is not None and not ignore_dataset:
             for child in self.attributes.values():
                 default_attr = default.attributes.get(child.name)
@@ -1501,83 +1500,144 @@ class DictAttribute(GenericDictAttribute[Attribute[t.Any, t.Any]]):
 class TemplateAttribute(GenericDictAttribute["Property"]):
     """Represents an AutoCreateAsset attribute. For those, their building blocks are not defined in meta properties but in templates where they indicate from which template their properties are taken. The instances of the same meta attribute might reference different templates."""
 
+    TEMPLATE_CACHE : TemplateCache | None = None
+
     def __init__(self, node: et._Element, parent: AttributeParentT, meta: ValueDefinition, cache: MetaPropertyCache):
         super().__init__(node, parent, meta, cache)
         self.template_node = node.find("Template")
         self.value_node = node.find("Values")
         self.template_name: str | None = None
         self.template: Template | None = None
+        self.inherits = False
+        self._is_initialized = False
 
-        self.unprocessed_properties: set[et._Element] = set()
-        if self.value_node is not None:
-            self.unprocessed_properties = set(
-                child for child in self.value_node.iterchildren() if isinstance(child.tag, str)
-            )
-            self.process_properties()
-
-        if self.get_value("IsBaseAutoCreateAsset", bool):
-            self.inherits = True
-            return
-
+        # Both Template and IsBaseAutoCreateAsset can be set, see "DefaultDeliveryExecutionPlace" (ConiditionQuestObjective) in properties-meta.xml 
         if self.template_node is not None:
             # Template and Values can be inherited
             self.template_name = str(self.template_node.text)
+            return
 
-    def process_properties(self):
+        if self.get_value("IsBaseAutoCreateAsset", bool):
+            self.inherits = True
+
+            if not isinstance(self.meta.default, TemplateAttribute):
+                raise ValueError(f"AutoCreateAsset {self.full_path} [{self.source}] does not specify a default template.")
+
+            return
+
+        if hasattr(self.meta, "default"): # we are not creating the default attribute right now
+            raise ValueError(f"AutoCreateAsset {self.full_path} [{self.source}] specifies neither IsBaseAutoCreateAsset nor Template.")
+
+    def derive_template_name(self):
+        if self.template_name is not None:
+            return
+
+        if self.TEMPLATE_CACHE is None:
+            return        
+        
+        template_names = [template.name for template in self.meta.allowed_templates]
+        if len(template_names) == 1:
+            self.template_name = template_names[0]
+            return
+
         if self.value_node is None:
             return
 
         for child in self.value_node.iterchildren():
             name = str(child.tag)
-            if name in self.attributes:
-                continue
 
-            meta_property = self.cache.get(name)
-            if meta_property is None:
-                continue  # Might not have yet been added. MetaPropertyCache.resolve_template_attributes will take care.
-
-            child_property = Property(child, self, meta_property, self.cache)
-            self._add_attribute(name, child_property)
+            if name in template_names:
+                self.template_name = name
+                break
 
     def resolve_inheritance(self, default: t.Self | None):
-        if default is None:
+        if self._is_initialized:
             return
 
-        if self.template_name is None:
+        if self.is_default and self.template_name is None:
+            self._is_initialized = True
+            return
+        
+        if default is not None and self.template_name is None:
+            if default.is_default:
+                default = self.meta.default # use updated default (from container values) instead of the default created one by upstream property
+
             self.template_node = default.template_node
             self.template_name = default.template_name
 
-        # self.attributes contains Property as values
-        for default_property in default.attributes.values():
-            if (prop := self.attributes.get(default_property.name)) is None:
-                logger.debug(f"Copy {default_property.name} from {default_property.full_path}")
-                prop = default_property
-                self._add_attribute(default_property.name, prop)
-            else:
-                logger.debug(f"{prop.name} from {default_property.full_path}")
-                prop.resolve_inheritance(default_property)
 
-    def set_template(self, template: Template):
-        """Sets the template for the AutoCreateAsset."""
-        self.template = template
+        # Cases to consider:
+        # default is None 
+        # initializing MetaProperty -> default is None
+        # initializing Template -> TemplateCache is None
+        # initializing base Asset -> self.template (root is the base Asset) can reference different default.template (root is the Template of base Asset)
+        # intializing inheriting Asset 
+        
+        # Case 1: We are initializing properties and templates 
+        # Do nothing here, TemplateCach will call self.set_template after initialization
+        if self.TEMPLATE_CACHE is None:           
+            return
+
+        if self.template_name is None and default is not None and not default._is_initialized:
+            raise ValueError(f"Passing non-initialized default to AutoCreatAsset: {self.full_path} [{self.source}]\t{default.full_path} [{default.source}]")    
+
+
+        if self.template_name is None and default is not None and default.template_name is None:
+            self.derive_template_name()
+
+        if self.template_name is None:
+            raise ValueError(f"Could not derive template name for AutoCreatAsset: {self.full_path} [{self.source}]\t{default.full_path} [{default.source}]\nCandidates: {template_names}")    
+
+
+        template = None
+        if default is not None and self.inherits and default.template and default.template.name == self.template_name:
+            template = default
+            self.template = default.template
+        
+        if template is None and self.template_name is not None:
+            template = self.TEMPLATE_CACHE.get(self.template_name)
+            self.template = template
+
+        if template is None:
+            if self.name.startswith("Test"):
+                return
+            raise ValueError(f"Template {self.template_name} not found for AutoCreateAsset {self.full_path} [{self.source}]")
+
+        # value node is None if we initialize the default attribute from a template derived from allowed templates
+        unprocessed_properties = set[str](
+            child.tag for child in self.value_node.iterchildren() if isinstance(child.tag, str)
+        ) if self.value_node is not None else set[str]()
 
         for template_property in template:
             name = template_property.name
-            assert self.value_node is not None
-            attribute_property = self.attributes.get(name)
+            
+            child = self.value_node.find(name) if self.value_node is not None else None
 
-            if attribute_property is None:
-                attribute_property = template_property
-                self._add_attribute(name, attribute_property)
+            if child is None or len(child) == 0:
+                property = Property(template_property.node, self, template_property.meta, self.cache)
             else:
-                attribute_property.resolve_inheritance(template_property)
+                property = Property(child, self, template_property.meta, self.cache)
+                
+            unprocessed_properties.discard(name)            
+            property.resolve_inheritance(template_property)
+            self._add_attribute(name, property)
+                
+        self._is_initialized = True
 
-            self.unprocessed_properties.discard(attribute_property.node)
-
-        if len(self.unprocessed_properties) > 0:
-            logger.info(
-                f"Setting template {template.name} before all values were processed in {self.meta.full_path if self.is_default else self.full_path} {[child.tag for child in self.unprocessed_properties]}"
+        if len(unprocessed_properties) > 0:
+            logger.warning(
+                f"Template Attribute {self.full_path} [{self.source}] specifies {unprocessed_properties} which is not in Template {self.template_name}."
             )
+
+
+
+    def set_reference(self, root: Asset | None = None):
+        """Sets the template for the AutoCreateAsset."""
+        if self.template is None or root is None:
+            return
+
+        self.template.instances[root.guid] = WeightedReference(root, self.template, self.property_path)
+
 
 
 class AttributeFactory:
@@ -1598,10 +1658,7 @@ class AttributeFactory:
             child.text = "0"
             root.append(child)
         elif data_type == "AutoCreateAsset":
-            child = et.Element("Template")
-            root.append(child)
-            child = et.Element("Values")
-            root.append(child)
+            pass
 
         return root
 
@@ -1648,7 +1705,7 @@ class AttributeFactory:
                 return UpgradeAttribute(node, parent, value_definition, cache)
             case "Flags":
                 return FlagsAttribute(node, parent, value_definition, cache)
-            case "Text":
+            case "Text" | "ScriptId": # ScriptId references both: a voice recording and a subtitle text
                 return TextAttribute(node, parent, value_definition, cache)
             case "Asset":
                 return ReferenceAttribute(node, parent, value_definition, is_variable, cache)

@@ -7,10 +7,8 @@ import lxml.etree as et
 from assetextractor.parsing.core.attributes import (
     Attribute,
     AttributeFactory,
-    ListItem,
     PrimitiveAttribute,
     Property,
-    TemplateAttribute,
 )
 from assetextractor.parsing.core.common import DatasetCache, ElementCache, Group, NamedElement
 
@@ -19,6 +17,7 @@ if t.TYPE_CHECKING:
 
     from assetextractor.parsing.core.texts import Text, TextCache
     from assetextractor.parsing.core.uitext import UITextCache
+    from assetextractor.parsing.core.templates import TemplateCache, Template
 
 
 class ValueDefinition(NamedElement["MetaPropertyCache"]):
@@ -27,6 +26,7 @@ class ValueDefinition(NamedElement["MetaPropertyCache"]):
     # Class variables are filled when constructing PropertyCache
     ALL_ATTRIBUTES: t.ClassVar[set[str]] = set()
     ALL_DATA_TYPES: t.ClassVar[set[str]] = set()
+    TEMPLATE_CACHE: TemplateCache | None = None
 
     def __init__(self, node: et._Element, parent: NamedElement[MetaPropertyCache], cache: MetaPropertyCache):
         super().__init__(node, parent, cache)
@@ -42,8 +42,15 @@ class ValueDefinition(NamedElement["MetaPropertyCache"]):
         items = node.find("Items")
         self.items = [] if items is None else [ValueDefinition(item, self, cache) for item in items.iterchildren()]
 
-        needed_property = self.get_value("NeededProperty", str)
-        self.needed_property = needed_property.split(";") if needed_property else []
+        def parse_list(name: str) -> list[str]:
+            property = self.get_value(name, str)
+            list = property.split(";") if property else []
+            return [item for item in list if len(item) > 0]
+
+        self.needed_property = parse_list("NeededProperty")
+        self.allowed_template_names = parse_list("AllowedTemplates")
+        if len(self.allowed_template_names) == 0:
+            self.allowed_template_names = parse_list("AllowedProperties")
 
         self.allow_empty = self.get_value("AllowEmpty", bool)
 
@@ -76,6 +83,31 @@ class ValueDefinition(NamedElement["MetaPropertyCache"]):
     @property
     def is_compound(self):
         return self.data_type in ["Array", "AutoCreateAsset", "Property", "Struct", "Vector"]
+
+    @property
+    def allowed_templates(self) -> list[Template]:
+        result : list[Template] = []
+        if self.TEMPLATE_CACHE is None:
+            return result
+
+        group = self.TEMPLATE_CACHE.groups.get("AutoCreateTemplates")
+        for name in self.allowed_template_names:
+            if name == "Condition":
+                name = "Conditions"
+            if name == "Action":
+                name = "Actions"
+
+            if group is not None:
+                subgroup = group.subgroups.get(name)
+                if subgroup is not None:
+                    result.extend(subgroup.templates) # pyright: ignore
+                    continue
+
+            template = self.TEMPLATE_CACHE.get(name)
+            if template is not None:
+                result.append(template)
+
+        return result
 
     def get(self, name: str) -> NamedElement["MetaPropertyCache"] | None:
         """Returns the element with the given name or None if it does not exist."""
@@ -291,7 +323,6 @@ class PropertyGroup(Group["MetaPropertyCache"]):
 
             self._propagate_default_container_values(child_element, child)
 
-
 class MetaPropertyCache(ElementCache[MetaProperty, PropertyGroup]):
     """Parses the meta description file 'properties-toolone.xml' containing discribing all attributes and value types."""
 
@@ -317,9 +348,7 @@ class MetaPropertyCache(ElementCache[MetaProperty, PropertyGroup]):
                 group = PropertyGroup(element, None, self)
                 self.groups[group.name] = group
 
-        for group in self.groups.values():
-            for property in group.defaults.values():
-                self.resolve_template_attributes(property)
+
 
     def _calculate_all_value_definitions(self):
         def process_node(element: et._Element):
@@ -334,16 +363,3 @@ class MetaPropertyCache(ElementCache[MetaProperty, PropertyGroup]):
 
         process_node(self.tree.getroot())
 
-    def resolve_template_attributes(self, property: ListItem | Property | Attribute[ElementCache[t.Any, t.Any], t.Any]):
-        """Once all properties are created, this method iterates the properties of an AutoCreateAsset attribute and updates the default values. This can only be done after initializing the cache to ensure all properties have been created."""
-        if isinstance(property, TemplateAttribute):
-            if property.value_node is None:
-                raise ValueError(f"AutoCreateAsset attribute has no values: {property.meta.full_path}.")
-
-            property.process_properties()
-
-        # nested AutoCreateAsset
-        if property.is_compound:
-            for sub_property in property:
-                assert isinstance(sub_property, (ListItem, Property, Attribute))
-                self.resolve_template_attributes(sub_property)

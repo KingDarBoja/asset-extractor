@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+
 import logging
 import typing as t
 
 import lxml.etree as et
 
 from assetextractor.parsing.core.attributes import Attribute, ListItem, Property, TemplateAttribute
-from assetextractor.parsing.core.common import ElementCache, Group, NamedElement
-from assetextractor.parsing.core.properties import MetaPropertyCache, PropertyGroup
+from assetextractor.parsing.core.common import ElementCache, Group, NamedElement, WeightedReference
+from assetextractor.parsing.core.properties import MetaProperty, MetaPropertyCache, PropertyGroup, ValueDefinition
 
 logger = logging.getLogger("parsing")
 
@@ -15,30 +16,6 @@ if t.TYPE_CHECKING:
     from pathlib import Path
 
     from assetextractor.parsing.core.assets import Asset
-
-
-class WeightedReference:
-    """
-    Stores a a reference from source to target.
-    If path is set, the reference is stored in the target and path is the property path in source to the ReferenceAttribute.
-    The optional weight can represent an amount or probability.
-    """
-
-    def __init__(self, source: Asset, target: Asset | Template, path: str | None = None, weight: float | None = None):
-        self.source = source
-        self.target = target
-        self.path = path
-        self.is_forward = path is None
-        self.weight = weight
-
-    def __rep__(self):
-        return self.__str__()
-
-    def __str__(self):
-        if self.is_forward:
-            return f"{self.target!s}"
-        return f"{self.source!s} from {self.path}"
-
 
 NamedRefColT = dict[str, dict[int, WeightedReference]]
 
@@ -159,6 +136,14 @@ class TemplateGroup(Group["TemplateCache"]):
 
         # self.cache.nodeToGroup[node] = self
 
+    @property
+    def templates(self) -> list[Template]:
+        # Get templates from this group
+        result: list[Template] = [template for template in self.elements.values() if isinstance(template, Template)]
+        # Get templates from all subgroups (flattened)
+        result.extend(template for group in self.subgroups.values() for template in group.templates if isinstance(template, Template))
+        return result
+
 
 class TemplateCache(ElementCache[Template, TemplateGroup]):
     def __init__(self, path: Path, properties: MetaPropertyCache):
@@ -166,6 +151,8 @@ class TemplateCache(ElementCache[Template, TemplateGroup]):
 
         self.properties = properties
         # self.nodeToGroup: Dict[et._Element, TemplateGroup] = dict()
+        self._processed_templates = set[Template]()
+        self._processed_defaults = set[TemplateAttribute]()
 
         parser = et.XMLParser(huge_tree=True)
         self.tree = et.parse(str(path), parser)
@@ -174,35 +161,95 @@ class TemplateCache(ElementCache[Template, TemplateGroup]):
             group = TemplateGroup(element, None, self)
             self.groups[group.name] = group
 
+        TemplateAttribute.TEMPLATE_CACHE = self
+        ValueDefinition.TEMPLATE_CACHE = self
+
+        for group in self.properties.groups.values():
+            self._process_property_group(group)
+
         for template in self:
-            for property in template:
-                group = property.meta.parent
-                if not isinstance(group, PropertyGroup):
-                    raise ValueError(f"Property {property.full_path} has no group.")
-                self.resolve_template_attributes(property, template.name)
+            self._process_template(template)
+
+    def _process_default(self, property: TemplateAttribute):
+        if property in self._processed_defaults:
+            return
+
+        #allowed_templates = property.meta.allowed_templates
+        #if property.template_name is None and len(allowed_templates) > 0:
+        #    property.template = allowed_templates[0]
+        #    property.template_name = property.template.name
+
+        if property.template_name is not None:
+            template = self.get(property.template_name)
+            if template is None:
+                raise ValueError(f"Template {property.template_name} not found in cache for AutoCreateAsset {property.full_path} [{property.source}]")
+
+            self._process_template(template)
+        
+        # if there is no template specified, still mark as initialized
+        property.resolve_inheritance(None)
+        self._processed_defaults.add(property)
+
+    def _process_value_definition(self, value_definition: ValueDefinition):
+        if value_definition.data_type == "AutoCreateAsset":
+            self._process_default(value_definition.default)
+
+        for item in value_definition.items:
+            self._process_value_definition(item)
+
+    def _process_meta_property(self, property: MetaProperty):
+        for value_definiton in property.value_definitions.values():
+            self._process_value_definition(value_definiton)
+
+        for subproperty in property.properties.values():
+            self._process_meta_property(subproperty)
+
+    def _process_property_group(self, group: PropertyGroup):
+        for subgroup in group.subgroups.values():
+            self._process_property_group(subgroup)
+
+        for property in group.defaults.values():
+            self.resolve_template_attributes(property)
+
+        for property in group.elements.values():
+            self._process_meta_property(property)
+
+    def _process_template(self, template: Template):
+        if template in self._processed_templates:
+            return
+
+        for property in template:
+            group = property.meta.parent
+            if not isinstance(group, PropertyGroup):
+                raise ValueError(f"Property {property.full_path} [{property.source}] has no group.")
+            self.resolve_template_attributes(property, template.name)
+
+        self._processed_templates.add(template)
+
 
     def resolve_template_attributes(
         self, property: ListItem | Property | Attribute[ElementCache[t.Any, t.Any], t.Any], path: str | None = None
     ):
         if isinstance(property, TemplateAttribute):
-            # property.process_properties()
-            try:
-                if property.template_name is None:
-                    raise ValueError(
-                        f"Missing template name for {property.meta.full_path if property.is_default else property.full_path}."
-                    )
+            # Derive the template from allowed templates, if there is none specified
+            self._process_default(property.meta.default)
 
-                ref_template = self.get(property.template_name)
-                if ref_template is None:
-                    raise ValueError(
-                        f"Template {property.template_name} not found for {property.meta.full_path if property.is_default else property.full_path} with path {path}."
-                    )
+            if property.template_name is None and property.meta.default.template_name is None:
+                property.derive_template_name()
 
-                property.set_template(ref_template)
-            except ValueError as e:
-                logger.debug(e)
+            if property.template_name is not None:
+                template = self.get(property.template_name)
+                if template is None:
+                    raise ValueError(f"Template {property.template_name} not found in cache for AutoCreateAsset {property.full_path} [{property.source}]")
 
-        if property.is_compound or isinstance(property, TemplateAttribute):
+                self._process_template(template)
+
+            # propagate from the updated default attribute
+            # do not propagate if it is already specified (e.g. it has a Template node or initialized from DefaultValues)
+            property.resolve_inheritance(property.meta.default)# if property.template_name is None and property.meta.default.template_name is not None else None) 
+
+
+        if property.is_compound:
             for sub_property in property:
                 assert isinstance(sub_property, (ListItem, Property, Attribute))
                 self.resolve_template_attributes(

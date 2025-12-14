@@ -14,14 +14,13 @@ from assetextractor.parsing.core.attributes import (
     TemplateAttribute,
     TextAttribute,
 )
-from assetextractor.parsing.core.common import ElementCache, Group, NamedElement
+from assetextractor.parsing.core.common import ElementCache, Group, NamedElement, WeightedReference
 from assetextractor.parsing.core.properties import Attribute, DatasetCache, MetaPropertyCache
 from assetextractor.parsing.core.templates import (
     NamedRefColT,
     Template,
     TemplateCache,
     TemplateGroup,
-    WeightedReference,
 )
 from assetextractor.parsing.core.texts import TextCache
 from assetextractor.parsing.core.uitext import BuffUI, UITextCache
@@ -562,8 +561,6 @@ class AssetCache(ElementCache[t.Any]):
         base_asset = self.elements[asset.base_asset_guid]
         self.resolve_inheritance(base_asset)  # recursively resolve inheritance of base asset first
         asset.resolve_inheritance(base_asset)
-        for property in asset:
-            self.templates.resolve_template_attributes(property)
 
     def resolve_references(self, asset: Asset | Template):
         def process_property(property: Property):
@@ -596,6 +593,12 @@ class AssetCache(ElementCache[t.Any]):
                     process_attribute(attr)
 
             if isinstance(element, TemplateAttribute):
+                if isinstance(asset, Asset):
+                    element.set_reference(asset)
+
+                if not element._is_initialized:
+                    raise ValueError(f"AutoCreateAsset {element.full_path} [{element.source}] not initialized.")
+                
                 for attr in element:
                     process_property(attr)
 

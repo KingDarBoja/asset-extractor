@@ -5,8 +5,12 @@ import typing as t
 
 import lxml.etree as et
 
-if t.TYPE_CHECKING:
-    from pathlib import Path
+from pathlib import Path
+
+if t.TYPE_CHECKING:  
+
+    from assetextractor.parsing.core.assets import Asset
+    from assetextractor.parsing.core.templates import Template
 
 
 class AttributeMissingError(Exception):
@@ -19,6 +23,29 @@ class AttributeMissingError(Exception):
         super().__init__(
             f"Attribute {attribute} missing in {element.parent.full_path if element.parent is not None else 'No parent'}.child[{self.child_index}]: {[subelement for subelement in element.node]!s}"
         )
+
+
+class WeightedReference:
+    """
+    Stores a a reference from source to target.
+    If path is set, the reference is stored in the target and path is the property path in source to the ReferenceAttribute.
+    The optional weight can represent an amount or probability.
+    """
+
+    def __init__(self, source: Asset, target: Asset | Template, path: str | None = None, weight: float | None = None):
+        self.source = source
+        self.target = target
+        self.path = path
+        self.is_forward = path is None
+        self.weight = weight
+
+    def __rep__(self):
+        return self.__str__()
+
+    def __str__(self):
+        if self.is_forward:
+            return f"{self.target!s}"
+        return f"{self.source!s} from {self.path}"
 
 
 class NamedElement[CacheT: "ElementCache[t.Any, t.Any]"]:
@@ -102,6 +129,13 @@ class NamedElement[CacheT: "ElementCache[t.Any, t.Any]"]:
                 else:
                     self._property_path = f"{self.parent.property_path}.{self.identifier}"
         return self._property_path
+
+    @property
+    def source(self) -> str:
+        if self.node is None or self.node.base is None or self.node.sourceline is None:
+            return "DEFAULT"
+
+        return f"{Path(self.node.base).stem}:{self.node.sourceline}"
 
     def get_value[T: str | int | bool | float](self, xml_name: str, dtype: type[T] = str) -> T | None:
         """Returns the value of the element with the given name converted to dtype.
