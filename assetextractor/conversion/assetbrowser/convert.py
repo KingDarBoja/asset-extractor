@@ -1,9 +1,10 @@
 import shutil
+from copy import deepcopy
 from html import escape
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
-from lxml.etree import tostring
+from lxml.etree import indent, tostring
 
 from assetextractor.extraction.utils import Config
 from assetextractor.parsing.core.assets import Asset, AssetCache
@@ -26,12 +27,15 @@ class Converter:
         output_dir.mkdir(parents=True, exist_ok=True)
 
         for element in elements:
+            # Create a deep copy of the node to avoid modifying the original
+            node_copy = deepcopy(element.node)
+            # Force proper indentation regardless of source XML formatting
+            indent(node_copy, space="  ")
+
             html = template.render(
                 asset=element,
                 template=element,
-                xml=escape(tostring(element.node, pretty_print=True, encoding="unicode"))
-                .replace("\n", "<br>")
-                .replace("  ", "&nbsp;&nbsp;"),
+                xml=escape(tostring(node_copy, encoding="unicode")),
             )
             element_id = element.safe_identifier
             filename = f"{element_id}.html"

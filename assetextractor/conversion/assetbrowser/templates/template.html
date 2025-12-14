@@ -1,3 +1,4 @@
+{% from 'macros.html' import enhanced_tooltip, render_reference_table %}
 <!DOCTYPE html>
 <html lang="en">
 
@@ -9,72 +10,75 @@
 
 <body>
     <h1>{{ template.name }}</h1>
-    <ul>
-        {% macro render_node(node) %}
 
-        {% if node.__class__.__name__ == "ReferenceAttribute" %}
-        {% set ref = node() %}
-        <span>{{node.name}}:
-            {% if node.is_variable %}
-            {{ node.variable_name }} <em>(Variable)</em>
-            {% elif ref is not none %}
-            <a href="../assets/{{ ref.safe_identifier }}.html">{{ ref.name if ref.name else ref }}</a>
-            {% else %}
-            None
-            {% endif %}
-        </span>
-        {% elif node.is_compound %}
-        {{ node.name if node.name else node }}
-        <ul>
-            {% for child in node %}
-            {% set inherited = (child.parent != node) %}
-            {% set is_default = (child.meta.default == child) %}
-            <li{% if inherited or is_default %}
-                class="{% if inherited %}inherited{% endif %}{% if inherited and is_default %} {% endif %}{% if is_default %}default{% endif %}"
-                {% endif %}>
-                {{ render_node(child) }}
-                </li>
+    {# Tab navigation #}
+    <div class="tabs">
+        <input type="radio" name="page-tabs" id="tab-pretty" checked>
+        <label for="tab-pretty">Composed</label>
+
+        <input type="radio" name="page-tabs" id="tab-refs">
+        <label for="tab-refs">References</label>
+
+        <input type="radio" name="page-tabs" id="tab-xml">
+        <label for="tab-xml">XML</label>
+
+        <div class="tab-panels">
+            {# Tab 1: Pretty Printed Tree #}
+            <div class="tab-panel" id="panel-pretty">
+                {% macro render_node(node) %}
+
+                {% if node.__class__.__name__ == "ReferenceAttribute" %}
+                {% set ref = node() %}
+                <span title="{{ enhanced_tooltip(node) }}">{{node.name}}:
+                    {% if node.is_variable %}
+                    {{ node.variable_name }} <em>(Variable)</em>
+                    {% elif ref is not none %}
+                    <a href="../assets/{{ ref.safe_identifier }}.html" title="{{ enhanced_tooltip(ref) }}">{{ ref.name if ref.name else ref }}</a>
+                    {% else %}
+                    None
+                    {% endif %}
+                </span>
+                {% elif node.is_compound %}
+                <span title="{{ enhanced_tooltip(node) }}">{{ node.name if node.name else node }}</span>
+                <ul>
+                    {% for child in node %}
+                    {% set inherited = (child.parent != node) %}
+                    {% set is_default = (child.meta.default == child) %}
+                    <li{% if inherited or is_default %}
+                        class="{% if inherited %}inherited{% endif %}{% if inherited and is_default %} {% endif %}{% if is_default %}default{% endif %}"
+                        {% endif %}>
+                        {{ render_node(child) }}
+                        </li>
+                        {% endfor %}
+                </ul>
+                {% else %}
+                <span title="{{ enhanced_tooltip(node) }}">
+                    {% if node.is_variable is defined and node.is_variable %}
+                    {{ node.name }}: {{ node.variable_name }} <em>(Variable)</em>
+                    {% else %}
+                    {{ node }}
+                    {% endif %}
+                </span>
+                {% endif %}
+
+                {% endmacro %}
+
+                <ul>{{ render_node(template) }}</ul>
+            </div>
+
+            {# Tab 2: References (instances of this template) #}
+            <div class="tab-panel" id="panel-refs">
+                {% for key, ref_dict in template.named_reference_collections.items() %}
+                    {{ render_reference_table(key, ref_dict, is_asset_view=false) }}
                 {% endfor %}
-        </ul>
-        {% else %}
-        {% if node.is_variable is defined and node.is_variable %}
-        {{ node.name }}: {{ node.variable_name }} <em>(Variable)</em>
-        {% else %}
-        {{ node }}
-        {% endif %}
-        {% endif %}
+            </div>
 
-        {% endmacro %}
-
-        {{ render_node(template) }}
-    </ul>
-
-    {% for key, ref_dict in template.named_reference_collections.items() %}
-    {% if ref_dict %}
-    <h1>{{ key }}</h1>
-    <table>
-        <tr>
-            <th>GUID</th>
-            <th>Asset</th>
-        </tr>
-        {% set sorted_refs = ref_dict.items() | sort(attribute='1.source.guid') %}
-        {% for guid, ref in sorted_refs %}
-        <tr>
-
-            <td>{{ref.source.guid}}</td>
-            <td>
-                <a href="../assets/{{ ref.source.guid }}.html">
-                    {{ ref.source.short_description }}
-                </a>
-            </td>
-        </tr>
-        {% endfor %}
-    </table>
-    {% endif %}
-    {% endfor %}
-
-    <h1>XML</h1>
-    <p>{{xml}}</p>
+            {# Tab 3: XML #}
+            <div class="tab-panel" id="panel-xml">
+                <pre class="xml-display">{{ xml }}</pre>
+            </div>
+        </div>
+    </div>
 </body>
 
 </html>

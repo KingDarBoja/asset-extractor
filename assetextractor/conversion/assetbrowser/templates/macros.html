@@ -1,0 +1,95 @@
+{# Enhanced tooltip macro with source information #}
+{% macro enhanced_tooltip(node) %}
+{%- set text = "" -%}
+{%- if node.meta is defined and node.meta is not none -%}
+    {# Data type #}
+    {%- if node.meta.data_type is defined and node.meta.data_type is not none -%}
+        {%- set text = text + node.meta.data_type|string -%}
+    {%- endif -%}
+
+    {# Optional flag #}
+    {%- if node.meta.allow_empty -%}
+        {%- set text = text + " [optional]" -%}
+    {%- endif -%}
+
+    {# Min/Max or Dataset #}
+    {%- if node.meta.min and node.meta.max -%}
+        {%- set text = text + " [" + node.meta.min|string + ", " + node.meta.max|string + "]" -%}
+    {%- elif node.meta.dataset -%}
+        {%- set text = text + " from " + node.meta.dataset|string -%}
+    {%- endif -%}
+
+    {# Description #}
+    {%- if node.meta.description -%}
+        {%- set text = text + "\n" + node.meta.description -%}
+    {%- endif -%}
+
+    {# Meta source (where the property definition comes from) #}
+    {%- if node.meta.source is defined -%}
+        {%- set text = text + "\nMeta: " + node.meta.source|string -%}
+    {%- endif -%}
+{%- endif -%}
+
+{# For TemplateAttribute, show the template name #}
+{%- if node.__class__.__name__ == "TemplateAttribute" -%}
+    {%- if node.template_name is defined and node.template_name is not none -%}
+        {%- set text = text + "\nTemplate: " + node.template_name|string -%}
+    {%- endif -%}
+{%- endif -%}
+
+{# Attribute source (where the value comes from in XML) #}
+{%- if node.source is defined -%}
+    {%- set text = text + "\nSource: " + node.source|string -%}
+{%- endif -%}
+
+{{ text }}
+{% endmacro %}
+
+{# Common macro for formatting reference tables #}
+{% macro render_reference_table(key, ref_dict, is_asset_view=true) %}
+{% if ref_dict %}
+<h1>{{ key }}</h1>
+<table>
+    <tr>
+        <th>Template</th>
+        <th>{% if is_asset_view %}Asset{% else %}GUID{% endif %}</th>
+        <th>{% if key in ["In Reward Pools", "In Asset Pools"] %}Probability{% else %}Path{% endif %}</th>
+    </tr>
+    {% set sorted_refs = ref_dict.items() | sort(attribute='1.target.template.name' if is_asset_view else '1.source.guid') %}
+    {% for guid, ref in sorted_refs %}
+    <tr>
+        {% if is_asset_view %}
+        {# Asset view: showing who references this asset #}
+        <td>
+            <a href="../templates/{{ ref.source.template.name }}.html"
+                title="{{ enhanced_tooltip(ref.source.template) }}">
+                {{ ref.source.template.name }}
+            </a>
+        </td>
+        <td>
+            <a href="{{ ref.source.safe_identifier }}.html"
+                title="{{ enhanced_tooltip(ref.source) }}">
+                {{ ref.source.name if ref.source.name else ref.source.identifier }}
+            </a>
+        </td>
+        {% if key in ["In Reward Pools", "In Asset Pools"] and ref.weight is not none %}
+        <td>{{ "%.2f" | format(ref.weight * 100) }}%</td>
+        {% else %}
+        <td>{{ ref.path if ref.path else "-" }}</td>
+        {% endif %}
+        {% else %}
+        {# Template view: showing instances of this template #}
+        <td>{{ ref.source.guid }}</td>
+        <td>
+            <a href="../assets/{{ ref.source.guid }}.html"
+                title="{{ enhanced_tooltip(ref.source) }}">
+                {{ ref.source.short_description }}
+            </a>
+        </td>
+        <td>{{ ref.path if ref.path else "-" }}</td>
+        {% endif %}
+    </tr>
+    {% endfor %}
+</table>
+{% endif %}
+{% endmacro %}
