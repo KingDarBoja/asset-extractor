@@ -12,7 +12,7 @@ import json
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from assetextractor.versioning.database import Version, VersionDatabase
+from assetextractor.versioning.database import AssetVersionData, Version, VersionDatabase
 
 
 @dataclass
@@ -134,7 +134,7 @@ def export_single_version_csv(
     db: VersionDatabase, output_path: Path, version_obj: Version, template_filter: str | None
 ) -> None:
     """Export a single version to CSV."""
-    asset_versions = db.get_asset_versions(version_obj.id, template_filter)
+    asset_versions: dict[int, AssetVersionData] = db.get_asset_versions(version_obj.id, template_filter)
 
     with output_path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
@@ -160,7 +160,7 @@ def export_all_versions_csv(
     asset_data: dict[int, AssetExportData] = {}
 
     for version in versions:
-        asset_versions = db.get_asset_versions(version.id, template_filter)
+        asset_versions: dict[int, AssetVersionData] = db.get_asset_versions(version.id, template_filter)
 
         for guid, data in asset_versions.items():
             if guid not in asset_data:
@@ -267,7 +267,7 @@ def export_single_version_json(
     db: VersionDatabase, output_path: Path, version_obj: Version, template_filter: str | None
 ) -> None:
     """Export a single version to JSON."""
-    asset_versions = db.get_asset_versions(version_obj.id, template_filter)
+    asset_versions: dict[int, AssetVersionData] = db.get_asset_versions(version_obj.id, template_filter)
 
     # Build asset list
     assets_list: list[AssetJsonExport] = []
@@ -331,7 +331,7 @@ def export_all_versions_json(db: VersionDatabase, output_path: Path, template_fi
     assets_dict: dict[int, AssetAllVersionsExport] = {}
 
     for version in versions:
-        asset_versions = db.get_asset_versions(version.id, template_filter)
+        asset_versions: dict[int, AssetVersionData] = db.get_asset_versions(version.id, template_filter)
 
         for guid, data in asset_versions.items():
             if guid not in assets_dict:

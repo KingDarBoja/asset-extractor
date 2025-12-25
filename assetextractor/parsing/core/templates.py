@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-
 import logging
 import typing as t
 
@@ -141,7 +140,9 @@ class TemplateGroup(Group["TemplateCache"]):
         # Get templates from this group
         result: list[Template] = [template for template in self.elements.values() if isinstance(template, Template)]
         # Get templates from all subgroups (flattened)
-        result.extend(template for group in self.subgroups.values() for template in group.templates if isinstance(template, Template))
+        for group in self.subgroups.values():
+            if isinstance(group, TemplateGroup):
+                result.extend(group.templates)
         return result
 
 
@@ -174,24 +175,26 @@ class TemplateCache(ElementCache[Template, TemplateGroup]):
         if property in self._processed_defaults:
             return
 
-        #allowed_templates = property.meta.allowed_templates
-        #if property.template_name is None and len(allowed_templates) > 0:
+        # allowed_templates = property.meta.allowed_templates
+        # if property.template_name is None and len(allowed_templates) > 0:
         #    property.template = allowed_templates[0]
         #    property.template_name = property.template.name
 
         if property.template_name is not None:
             template = self.get(property.template_name)
             if template is None:
-                raise ValueError(f"Template {property.template_name} not found in cache for AutoCreateAsset {property.full_path} [{property.source}]")
+                raise ValueError(
+                    f"Template {property.template_name} not found in cache for AutoCreateAsset {property.full_path} [{property.source}]"
+                )
 
             self._process_template(template)
-        
+
         # if there is no template specified, still mark as initialized
         property.resolve_inheritance(None)
         self._processed_defaults.add(property)
 
     def _process_value_definition(self, value_definition: ValueDefinition):
-        if value_definition.data_type == "AutoCreateAsset":
+        if value_definition.data_type == "AutoCreateAsset" and isinstance(value_definition.default, TemplateAttribute):
             self._process_default(value_definition.default)
 
         for item in value_definition.items:
@@ -206,13 +209,15 @@ class TemplateCache(ElementCache[Template, TemplateGroup]):
 
     def _process_property_group(self, group: PropertyGroup):
         for subgroup in group.subgroups.values():
-            self._process_property_group(subgroup)
+            if isinstance(subgroup, PropertyGroup):
+                self._process_property_group(subgroup)
 
         for property in group.defaults.values():
             self.resolve_template_attributes(property)
 
         for property in group.elements.values():
-            self._process_meta_property(property)
+            if isinstance(property, MetaProperty):
+                self._process_meta_property(property)
 
     def _process_template(self, template: Template):
         if template in self._processed_templates:
@@ -226,28 +231,43 @@ class TemplateCache(ElementCache[Template, TemplateGroup]):
 
         self._processed_templates.add(template)
 
-
     def resolve_template_attributes(
         self, property: ListItem | Property | Attribute[ElementCache[t.Any, t.Any], t.Any], path: str | None = None
     ):
         if isinstance(property, TemplateAttribute):
             # Derive the template from allowed templates, if there is none specified
-            self._process_default(property.meta.default)
+            # property.meta is a ValueDefinition which has a default attribute
+            meta = t.cast("ValueDefinition", property.meta)
+            if hasattr(meta, "default"):
+                meta_default = meta.default
+                if isinstance(meta_default, TemplateAttribute):
+                    self._process_default(meta_default)
 
-            if property.template_name is None and property.meta.default.template_name is None:
-                property.derive_template_name()
+                if (
+                    property.template_name is None
+                    and isinstance(meta_default, TemplateAttribute)
+                    and hasattr(meta_default, "template_name")
+                    and meta_default.template_name is None
+                ):
+                    property.derive_template_name()
 
-            if property.template_name is not None:
-                template = self.get(property.template_name)
-                if template is None:
-                    raise ValueError(f"Template {property.template_name} not found in cache for AutoCreateAsset {property.full_path} [{property.source}]")
+                if property.template_name is not None:
+                    template = self.get(property.template_name)
+                    if template is None:
+                        raise ValueError(
+                            f"Template {property.template_name} not found in cache for AutoCreateAsset {property.full_path} [{property.source}]"
+                        )
 
-                self._process_template(template)
+                    self._process_template(template)
 
-            # propagate from the updated default attribute
-            # do not propagate if it is already specified (e.g. it has a Template node or initialized from DefaultValues)
-            property.resolve_inheritance(property.meta.default)# if property.template_name is None and property.meta.default.template_name is not None else None) 
-
+                # propagate from the updated default attribute
+                # do not propagate if it is already specified (e.g. it has a Template node or initialized from DefaultValues)
+                if isinstance(meta_default, TemplateAttribute):
+                    property.resolve_inheritance(meta_default)  # type: ignore
+                else:
+                    property.resolve_inheritance(None)  # type: ignore
+            else:
+                property.resolve_inheritance(None)  # type: ignore
 
         if property.is_compound:
             for sub_property in property:

@@ -43,13 +43,18 @@ class SnapshotStatistics(TypedDict):
 
 
 def create_snapshot(
-    config: Config, version_string: str, db_path: Path, description: str | None = None, force: bool = False
+    config: Config,
+    version_string: str,
+    db_path: Path,
+    description: str | None = None,
+    force: bool = False,
+    assets: AssetCache | None = None,
 ) -> SnapshotStatistics:
     """
     Create a new version snapshot.
 
     This function:
-    1. Loads all assets from the cache
+    1. Loads all assets from the cache (or uses provided assets)
     2. Checks if version already exists (error if duplicate and not force)
     3. Calculates SHA-256 hash for each asset using canonical XML
     4. Creates version record in database
@@ -62,6 +67,7 @@ def create_snapshot(
         db_path: Path to SQLite database
         description: Optional version description
         force: If True, overwrite existing version
+        assets: Optional pre-loaded AssetCache (for performance)
 
     Returns:
         Dict with statistics:
@@ -88,10 +94,13 @@ def create_snapshot(
             "Please run extraction first (extract.cmd or python -m assetextractor.extraction.extract)"
         )
 
-    # Load assets
-    print(f"Loading assets from {config.cache_path}...")
-    assets = AssetCache.load(config)
-    print(f"Loaded {len(assets.elements)} assets")
+    # Load assets if not provided
+    if assets is None:
+        print(f"Loading assets from {config.cache_path}...")
+        assets = AssetCache.load(config)
+        print(f"Loaded {len(assets.elements)} assets")
+    else:
+        print(f"Using pre-loaded assets ({len(assets.elements)} assets)")
 
     # Open database
     db = VersionDatabase(db_path)

@@ -108,7 +108,94 @@ If you're using VS Code, you can also press `Ctrl + Shift + B` to run nox.
 
 You should ensure all nox pipelines pass before pushing your changes.
 
+### Testing
+
+The project uses pytest for testing. To run tests:
+
+```sh
+# Run all tests
+uv run pytest
+
+# Run with verbose output
+uv run pytest -v
+
+# Run specific test file
+uv run pytest tests/integration/verify_building_sizes.py
+
+# Run specific test
+uv run pytest tests/integration/verify_building_sizes.py::test_csv_loading -v
+
+# Run tests matching keyword
+uv run pytest -k "building_size"
+```
+
+For more testing options, see `tests/README.md` or run `uv run pytest --help`.
+
 ## Overview
+
+
+```mermaid
+flowchart LR
+    %% Input
+    RDA["🎮<br/>Game Files<br/>RDA Archives"]
+
+    %% Extraction outputs
+    XML["📄<br/>XML Files"]
+    DDS["🖼️<br/>DDS Images"]
+    CFG["📋<br/>CFG Files"]
+
+    %% Parsing components (vertical stack)
+    subgraph PARSING[" "]
+        direction TB
+        TEMPLATES["Templates"]
+        ASSETS["Assets"]
+        PROPS["Properties"]
+        ATTRS["Attributes"]
+
+        ASSETS --> TEMPLATES
+        TEMPLATES --> PROPS
+        PROPS --> ATTRS
+    end
+
+    %% Resolved tree
+    TREE["🌳<br/>Fully Resolved<br/>Asset Tree"]
+
+    %% Conversion outputs
+    CALC["📊<br/>Calculator<br/>JSON"]
+    BROWSER["🌐<br/>Asset Browser<br/>HTML"]
+    PLANNER["📅<br/>Planner<br/>JSON"]
+    ITEMS["📑<br/>Item Table<br/>Spreadsheet"]
+
+    %% Main flow
+    RDA -->|Extraction| XML
+    RDA -->|Extraction| DDS
+    RDA -->|Extraction| CFG
+
+    XML -->|Parsing| PARSING
+    PARSING --> TREE
+    TREE -->|Conversion| CALC
+    TREE -->|Conversion| BROWSER
+    TREE -->|Conversion| PLANNER
+    TREE -->|Conversion| ITEMS
+
+    %% Styling
+    classDef inputStyle fill:#e1f5ff,stroke:#01579b,stroke-width:3px,color:#000
+    classDef extractStyle fill:#fff3e0,stroke:#e65100,stroke-width:2px,color:#000
+    classDef parseStyle fill:#f3e5f5,stroke:#4a148c,stroke-width:2px,color:#000
+    classDef treeStyle fill:#e8f5e9,stroke:#2e7d32,stroke-width:3px,color:#000
+    classDef outputStyle fill:#fff9c4,stroke:#f57f17,stroke-width:3px,color:#000
+    classDef subgraphStyle fill:#fafafa,stroke:#9e9e9e,stroke-width:1px,color:#000
+
+    class RDA inputStyle
+    class XML,DDS,CFG extractStyle
+    class TEMPLATES,ASSETS,PROPS,ATTRS parseStyle
+    class TREE treeStyle
+    class CALC,BROWSER,PLANNER,ITEMS outputStyle
+    class PARSING subgraphStyle
+```
+
+### Module Details
+
 The project consists of 3 modules (their source code is located in a subfolder of `assetextractor` with the corresponding name):
 
 1. `extraction`: Opens the RDA files of the game and extracts the xml, dds, cfg and other required files. These are stored in the cache directory. The extraction module uses RDAConsole.exe to extract files from game RDA archives.

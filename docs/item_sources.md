@@ -38,9 +38,10 @@ WeightedReference:
 
 **Coverage Statistics (from current implementation):**
 - 391 total items in Anno 117
-- 81.8% of items have at least one tracked source
+- 90.0% of items have at least one tracked source (352/391)
 - Average of 1.29 sources per item
 - Some items appear in 70+ different pools
+- 8 source types tracked: Traders, Research, Quests, Drops, Achievements, Festivals, Colosseum Events, Functions/Triggers
 
 ---
 
@@ -469,6 +470,88 @@ def find_festival_sources(item: Asset, assets: AssetCache) -> list[dict]:
 
 ---
 
+### 8. **Colosseum Events**
+
+**Display Format:** `Colosseum`
+
+**Templates:** `Decision` (with "Colosseum" in name), `QuestPool` (98164 - Colosseum Story Questpool)
+
+**Discovery Pattern:**
+
+```python
+def find_colosseum_sources(item: Asset, assets: AssetCache) -> list[dict]:
+    """Find Colosseum event decisions that grant this item."""
+    sources = []
+
+    # Check reference-based sources (two-level decision chain)
+    if hasattr(item, 'referenced_by'):
+        for ref_guid, weighted_ref in item.referenced_by.items():
+            source = weighted_ref.source
+
+            # Check for Decision with ActionAddGoodsToItemContainer
+            if source.template.name == "Decision" and "ActionAddGoodsToItemContainer" in weighted_ref.path:
+                # This is a child decision that gives the item
+                # Check if this decision or its parent has "Colosseum" in the name
+                is_colosseum = False
+                parent_decision = None
+
+                if source.name and "Colosseum" in source.name:
+                    is_colosseum = True
+                    parent_decision = source
+                else:
+                    # Check if this decision is referenced by a Colosseum decision
+                    if hasattr(source, 'referenced_by'):
+                        for parent_guid, parent_ref in source.referenced_by.items():
+                            parent = parent_ref.source
+                            if parent.template.name == "Decision" and parent.name and "Colosseum" in parent.name:
+                                is_colosseum = True
+                                parent_decision = parent
+                                break
+
+                if is_colosseum:
+                    sources.append({
+                        "type": "colosseum",
+                        "name": "Colosseum",  # Localized via text ID -6910621358872896970
+                        "guid": 98164,  # Colosseum Story Questpool GUID
+                        "decision_guid": parent_decision.guid if parent_decision else source.guid
+                    })
+
+    return sources
+```
+
+**Decision Chain Structure:**
+
+```
+Item (96815 - Gigantulas, Polyphemian Captain)
+    ↓ ActionAddGoodsToItemContainer
+Child Decision (50816 - "Thumbs Down (Spare)")
+    ↓ referenced_by
+Parent Decision (50814 - "Colosseum Decision")
+    ↓ referenced_by
+StoryLine (50813 - "Colosseum Decision Story S2a")
+    ↓ referenced_by
+QuestPool (98164 - "Colosseum Story Questpool")
+```
+
+**Colosseum Specialist Items (5 total):**
+- 96815: Gigantulas, Polyphemian Captain (Captain)
+- 96821: Publius Quintus, Amphipraetorian (Specialist)
+- 96819: Virtuous Volunteer (Specialist)
+- 50890: Favillus, Survivor of Sands and Sandals (ItemWithBoost - Specialist)
+- 96817: Apion Mochthos Apicius, of Apeiron Appetite (Specialist)
+
+**Key Implementation Notes:**
+- Colosseum events use a two-level decision chain: parent decisions (e.g., "Colosseum Decision") contain child decisions (e.g., "Thumbs Down (Spare)")
+- Items are rewarded in the child decisions via `ActionAddGoodsToItemContainer`
+- Parent decisions are identified by having "Colosseum" in their name
+- The code must traverse from child to parent to correctly identify Colosseum items
+- All Colosseum specialists are obtained by choosing the "spare" option (Thumbs Down) during events
+
+**Example Output:**
+- `Colosseum` (displayed without additional details, like subjugated items)
+
+---
+
 ## Localization Strategy
 
 ### Provided Text IDs
@@ -481,6 +564,7 @@ SOURCE_TEXT_IDS = {
     "selling": -6902222124635972240,    # "Selling"
     "research": -6902138578600598283,   # "Research"
     "flotsam": -6917297453044695070,    # "Flotsam"
+    "colosseum": -6910621358872896970   # "Colosseum"
 }
 ```
 
@@ -539,6 +623,7 @@ def find_all_item_sources(item: Asset, assets: AssetCache) -> dict[str, list[dic
         "drops": [],
         "achievement": [],
         "festival": [],
+        "colosseum": [],
         "function": [],
         "trigger": []
     }
@@ -1045,18 +1130,18 @@ Quest: Introduce New Specialist
 **Key Achievements:**
 
 1. **No Hardcoded GUIDs:** All sources discovered dynamically via templates and reverse references
-2. **Comprehensive Coverage:** 7 source types tracked (vs. 3 in current implementation)
+2. **Comprehensive Coverage:** 8 source types tracked (Traders, Research, Quests, Drops, Achievements, Festivals, Colosseum Events, Functions/Triggers)
 3. **Localized Display:** Returns Text objects for multi-language support; uses game text IDs for labels
 4. **Efficient Traversal:** Uses `referenced_by` and pool references instead of iterating all templates
-5. **Quest Chain Support:** Traverses decision chains to find root quests
+5. **Quest Chain Support:** Traverses decision chains to find root quests and Colosseum events
 6. **Probability Tracking:** Exposes item probability/weight in pools
 7. **Flexible Display:** Supports concise, detailed, and CSV formats
 
 **Coverage Improvement:**
 
-- Current: 81.8% coverage (320/391 items)
-- Expected with new implementation: 95%+ coverage
-- Missing 18.2% should be covered by quest chains, achievements, festivals, functions
+- Current: 90.0% coverage (352/391 items)
+- Colosseum Events: 5 unique specialist items identified
+- Missing 10.0% likely includes expedition-only items, tutorial items, or developer test items
 
 **Performance:**
 

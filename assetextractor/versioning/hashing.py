@@ -242,7 +242,7 @@ def _collect_target_hashes(asset: Asset, visited: set[int], hash_cache: dict[int
                     # Check if it's a valid Asset
                     if isinstance(target_ref, Asset):
                         guids = sorted([asset.guid for asset in target_ref.pool_assets()])
-                        
+
                         for guid in guids:
                             hashes.append(str(guid).encode())
                 except (AttributeError, Exception):

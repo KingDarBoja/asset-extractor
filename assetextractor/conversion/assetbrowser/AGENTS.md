@@ -1,6 +1,8 @@
 # Asset Browser Implementation Guide
 
-This document explains how the asset browser HTML generator works.
+## Summary
+
+The asset browser generates static HTML pages from Anno 117 asset data using Jinja2 templates. Each page features pure CSS tabs (Composed/References/XML), enhanced tooltips showing source locations and metadata, and reusable table macros for consistent formatting. The converter enforces XML indentation and creates a browsable reference of all assets and templates.
 
 ## Overview
 

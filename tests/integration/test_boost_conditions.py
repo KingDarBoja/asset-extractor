@@ -12,6 +12,7 @@ import pytest
 
 from assetextractor.extraction.utils import Config
 from assetextractor.parsing.core.assets import Asset, AssetCache
+from assetextractor.conversion.statistics.boost_conditions import BoostConditionParser
 
 
 @pytest.fixture(scope="module")
@@ -21,181 +22,19 @@ def assets():
     return AssetCache.load(config)
 
 
+@pytest.fixture(scope="module")
+def boost_parser(assets):
+    """Create boost condition parser once for all tests."""
+    return BoostConditionParser(assets, assets.texts)
+
+
 def extract_boost_condition(item_asset: Asset, assets: AssetCache) -> str:
-    """Extract the boost condition from an ItemWithBoost asset."""
+    """Extract the boost condition from an ItemWithBoost asset.
 
-    def get_english_name(asset: Asset) -> str:
-        """Get the English name of an asset from localization."""
-        if asset.text is not None and "english" in asset.text.values:
-            return asset.text.values["english"]
-        try:
-            name = asset.find("Standard.Name")()
-            return name if name else f"Asset_{asset.guid}"
-        except:
-            return f"Asset_{asset.guid}"
-
-    try:
-        condition_attr = item_asset.find("ItemWithBoost.BoostCondition.PreConditionList.Condition")
-        if not condition_attr:
-            return ""
-
-        condition = condition_attr
-        if not condition:
-            return ""
-
-        # ConditionAlwaysTrue
-        try:
-            if hasattr(condition, 'ConditionAlwaysTrue'):
-                has_other = any(hasattr(condition, ct) for ct in [
-                    'ConditionObjectCount', 'ConditionDominantPatron', 'ConditionNeedAttributeCounter',
-                    'ConditionPlayerCounter', 'ConditionActiveEmperor', 'ConditionEmperorRelation',
-                    'ConditionReligion', 'ConditionMonumentEventsActive', 'ConditionDiplomacyState',
-                    'ConditionItemUsed', 'ConditionWarState', 'ConditionInStorage', 'ConditionTradeRouteCount'
-                ])
-                if not has_other:
-                    return "Always active"
-        except:
-            pass
-
-        # ConditionObjectCount
-        try:
-            if hasattr(condition, 'ConditionObjectCount'):
-                amount = condition.ConditionObjectCount.Amount()
-                comparison_op = condition.ConditionObjectCount.ComparisonOp()
-                comparison_map = {0: ">=", "AtLeast": ">=", "AtMost": "<=", "LessThan": "<", "GreaterThan": ">", "Equal": "="}
-                op_symbol = comparison_map.get(comparison_op, ">=")
-                obj_guid = condition.ObjectFilter.ObjectGUID()
-                if obj_guid:
-                    obj_name = get_english_name(obj_guid)
-                    amount_str = str(int(amount)) if amount == int(amount) else str(amount)
-                    return f"{obj_name} {op_symbol} {amount_str}"
-        except:
-            pass
-
-        # ConditionNeedAttributeCounter
-        try:
-            if hasattr(condition, 'ConditionNeedAttributeCounter'):
-                need_type = condition.ConditionNeedAttributeCounter.NeedAttributeType()
-                amount = condition.ConditionNeedAttributeCounter.NeedAttributeAmount()
-
-                if need_type and amount:
-                    amount_str = str(int(amount)) if amount == int(amount) else str(amount)
-                    return f"{need_type} >= {amount_str}"
-        except:
-            pass
-
-        # ConditionDominantPatron
-        try:
-            if hasattr(condition, 'ConditionDominantPatron'):
-                patron_guid = condition.ConditionDominantPatron.PatronGUID()
-                if patron_guid:
-                    return f"Patron: {get_english_name(patron_guid)}"
-        except:
-            pass
-
-        # ConditionReligion
-        try:
-            if hasattr(condition, 'ConditionReligion'):
-                religion_asset = condition.ConditionReligion.ReligionAsset()
-                if religion_asset:
-                    return f"Patron: {get_english_name(religion_asset)}"
-        except:
-            pass
-
-        # ConditionPlayerCounter
-        try:
-            if hasattr(condition, 'ConditionPlayerCounter'):
-                player_counter = condition.ConditionPlayerCounter.PlayerCounter()
-                comparison_op = condition.ConditionPlayerCounter.ComparisonOp()
-                counter_amount = condition.ConditionPlayerCounter.CounterAmount()
-                comparison_map = {0: ">=", "AtLeast": ">=", "AtMost": "<=", "LessThan": "<", "GreaterThan": ">", "Equal": "="}
-                op_symbol = comparison_map.get(comparison_op, ">=")
-
-                context_building = condition.ConditionPlayerCounter.Context()
-                if context_building:
-                    building_name = get_english_name(context_building)
-                    amount_str = str(int(counter_amount)) if counter_amount == int(counter_amount) else str(counter_amount)
-                    return f"{building_name} {op_symbol} {amount_str}"
-
-                if player_counter and player_counter != 0:
-                    counter_name = str(player_counter)
-                    amount_str = str(int(counter_amount)) if counter_amount == int(counter_amount) else str(counter_amount)
-                    return f"{counter_name} {op_symbol} {amount_str}"
-        except:
-            pass
-
-        # ConditionActiveEmperor
-        try:
-            if hasattr(condition, 'ConditionActiveEmperor'):
-                emperor = condition.ConditionActiveEmperor.EmperorParticipant()
-                if emperor:
-                    return f"Emperor: {get_english_name(emperor)}"
-        except:
-            pass
-
-        # ConditionEmperorRelation
-        try:
-            if hasattr(condition, 'ConditionEmperorRelation'):
-                return "Emperor relation required"
-        except:
-            pass
-
-        # ConditionDiplomacyState
-        try:
-            if hasattr(condition, 'ConditionDiplomacyState'):
-                profile2 = condition.ConditionDiplomacyState.Profile2()
-                desired_state = condition.ConditionDiplomacyState.DesiredState()
-                if profile2 and desired_state:
-                    profile_name = get_english_name(profile2)
-                    return f"Diplomacy with {profile_name}: {desired_state}"
-        except:
-            pass
-
-        # ConditionTradeRouteCount
-        try:
-            if hasattr(condition, 'ConditionTradeRouteCount'):
-                count = condition.ConditionTradeRouteCount.TradeRouteCount()
-                count_op = condition.ConditionTradeRouteCount.CountComparisonOp()
-                comparison_map = {0: ">=", "AtLeast": ">=", "AtMost": "<=", "LessThan": "<", "GreaterThan": ">", "Equal": "="}
-                op_symbol = comparison_map.get(count_op, ">=")
-                if count:
-                    return f"Trade routes {op_symbol} {int(count)}"
-        except:
-            pass
-
-        # ConditionItemUsed
-        try:
-            if hasattr(condition, 'ConditionItemUsed'):
-                item_amount = condition.ConditionItemUsed.ItemAmount()
-                if item_amount:
-                    return f"{int(item_amount)} items equipped"
-        except:
-            pass
-
-        # ConditionMonumentEventsActive
-        try:
-            if hasattr(condition, 'ConditionMonumentEventsActive'):
-                return "Monument events active"
-        except:
-            pass
-
-        # ConditionWarState
-        try:
-            if hasattr(condition, 'ConditionWarState'):
-                return "At war"
-        except:
-            pass
-
-        # ConditionInStorage
-        try:
-            if hasattr(condition, 'ConditionInStorage'):
-                return "Items in storage"
-        except:
-            pass
-
-        return "Boost condition active"
-    except:
-        return ""
+    This is a wrapper function for backward compatibility with existing tests.
+    """
+    parser = BoostConditionParser(assets, assets.texts)
+    return parser.parse(item_asset)
 
 
 class TestBoostConditionExtraction:

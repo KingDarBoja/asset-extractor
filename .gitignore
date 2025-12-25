@@ -229,6 +229,7 @@ RDAConsole/
 config.json
 results/
 docs/chats/
+gsheet_credentials.json
 
 # Ruff cache
 .ruff_cache/

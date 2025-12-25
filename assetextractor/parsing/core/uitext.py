@@ -113,7 +113,9 @@ class UITextCache:
             "buff_texts": "ItemInfotipTextFeature.BuffUpgradeTextAndIcons",  # Direct access to buff text structs
             "mappings": {
                 # Buff upgrade types - most common mappings
-                "BuffUpgradeType": "{}.Text"
+                "BuffUpgradeType": "{}.Text",
+                # Need attribute types (Population, Money, Happiness, Health, etc.)
+                "NeedAttributeType": "BuffAdditionalNeedAttributes.Attributes.{}.Text",
             },
             # Some buffs have variant text for different contexts
             "variants": {
@@ -1404,7 +1406,7 @@ class UITextCache:
         ):
             percental = True
 
-        if attr_name == "BuffReduceCargoImpactUpgrade":
+        if attr_name == "BuffReduceCargoImpactUpgrade" or attr_name == "BuffReduceDamageImpactUpgrade":
             percental = True
             value *= -1
 

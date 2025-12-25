@@ -12,12 +12,13 @@ from assetextractor.parsing.core.templates import Template
 
 
 class Converter:
-    def __init__(self, cache: AssetCache):
+    def __init__(self, cache: AssetCache, config: Config):
         self.assets = cache
+        self.config = config
 
         # Set up Jinja2 environment
         self.template_dir = Path(__file__).parent / "templates"
-        self.output_dir = Path(__file__).parent / "../../../results/assetbrowser/"
+        self.output_dir = config.assetbrowser_dir
         self.env = Environment(loader=FileSystemLoader(str(self.template_dir)), trim_blocks=True, lstrip_blocks=True)
 
     def render_elements(self, elements: list[Asset | Template], jinja_template_name: str, output_subdirectory: str):
@@ -32,11 +33,7 @@ class Converter:
             # Force proper indentation regardless of source XML formatting
             indent(node_copy, space="  ")
 
-            html = template.render(
-                asset=element,
-                template=element,
-                xml=escape(tostring(node_copy, encoding="unicode")),
-            )
+            html = template.render(asset=element, template=element, xml=escape(tostring(node_copy, encoding="unicode")))
             element_id = element.safe_identifier
             filename = f"{element_id}.html"
             filepath = output_dir / filename
@@ -67,5 +64,5 @@ class Converter:
 if __name__ == "__main__":
     config = Config.from_json("config.json")
     cache = AssetCache.load(config)
-    converter = Converter(cache)
+    converter = Converter(cache, config)
     converter.run()

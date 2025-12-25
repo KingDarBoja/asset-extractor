@@ -2,13 +2,11 @@ from __future__ import annotations
 
 import re
 import typing as t
+from pathlib import Path
 
 import lxml.etree as et
 
-from pathlib import Path
-
-if t.TYPE_CHECKING:  
-
+if t.TYPE_CHECKING:
     from assetextractor.parsing.core.assets import Asset
     from assetextractor.parsing.core.templates import Template
 
@@ -132,7 +130,7 @@ class NamedElement[CacheT: "ElementCache[t.Any, t.Any]"]:
 
     @property
     def source(self) -> str:
-        if self.node is None or self.node.base is None or self.node.sourceline is None:
+        if self.node.base is None or self.node.sourceline is None:
             return "DEFAULT"
 
         return f"{Path(self.node.base).stem}:{self.node.sourceline}"

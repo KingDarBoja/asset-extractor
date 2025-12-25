@@ -1,4 +1,5 @@
 {
     "game_path": "C:/Program Files (x86)/Ubisoft/Ubisoft Game Launcher/games/Anno 117 - Pax Romana",
-    "cache_path": ".cache"
+    "cache_path": ".cache",
+    "assetbrowser_dir": "results/assetbrowser"
 }

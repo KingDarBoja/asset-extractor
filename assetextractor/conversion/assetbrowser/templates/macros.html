@@ -42,7 +42,7 @@
     {%- set text = text + "\nSource: " + node.source|string -%}
 {%- endif -%}
 
-{{ text }}
+{{ text | e }}
 {% endmacro %}
 
 {# Common macro for formatting reference tables #}
@@ -61,14 +61,13 @@
         {% if is_asset_view %}
         {# Asset view: showing who references this asset #}
         <td>
-            <a href="../templates/{{ ref.source.template.name }}.html"
+            <a href="../templates/{{ ref.source.template.safe_identifier }}.html"
                 title="{{ enhanced_tooltip(ref.source.template) }}">
                 {{ ref.source.template.name }}
             </a>
         </td>
         <td>
-            <a href="{{ ref.source.safe_identifier }}.html"
-                title="{{ enhanced_tooltip(ref.source) }}">
+            <a href="{{ ref.source.safe_identifier }}.html" title="{{ enhanced_tooltip(ref.source) }}">
                 {{ ref.source.name if ref.source.name else ref.source.identifier }}
             </a>
         </td>
@@ -81,8 +80,7 @@
         {# Template view: showing instances of this template #}
         <td>{{ ref.source.guid }}</td>
         <td>
-            <a href="../assets/{{ ref.source.guid }}.html"
-                title="{{ enhanced_tooltip(ref.source) }}">
+            <a href="../assets/{{ ref.source.guid }}.html" title="{{ enhanced_tooltip(ref.source) }}">
                 {{ ref.source.short_description }}
             </a>
         </td>

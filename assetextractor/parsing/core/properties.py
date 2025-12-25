@@ -9,15 +9,16 @@ from assetextractor.parsing.core.attributes import (
     AttributeFactory,
     PrimitiveAttribute,
     Property,
+    TemplateAttribute,
 )
 from assetextractor.parsing.core.common import DatasetCache, ElementCache, Group, NamedElement
 
 if t.TYPE_CHECKING:
     from pathlib import Path
 
+    from assetextractor.parsing.core.templates import Template, TemplateCache
     from assetextractor.parsing.core.texts import Text, TextCache
     from assetextractor.parsing.core.uitext import UITextCache
-    from assetextractor.parsing.core.templates import TemplateCache, Template
 
 
 class ValueDefinition(NamedElement["MetaPropertyCache"]):
@@ -86,7 +87,7 @@ class ValueDefinition(NamedElement["MetaPropertyCache"]):
 
     @property
     def allowed_templates(self) -> list[Template]:
-        result : list[Template] = []
+        result: list[Template] = []
         if self.TEMPLATE_CACHE is None:
             return result
 
@@ -100,7 +101,7 @@ class ValueDefinition(NamedElement["MetaPropertyCache"]):
             if group is not None:
                 subgroup = group.subgroups.get(name)
                 if subgroup is not None:
-                    result.extend(subgroup.templates) # pyright: ignore
+                    result.extend(subgroup.templates)  # pyright: ignore
                     continue
 
             template = self.TEMPLATE_CACHE.get(name)
@@ -236,7 +237,7 @@ class PropertyGroup(Group["MetaPropertyCache"]):
     Unfortunately, not for all attributes a default is defined. In those cases a default value for the data type is used (e.g. 0 for numbers).
     """
 
-    IGNORED_GROUPS: tuple[str] = tuple()  # ["ExportConditions", "ExportConditionObjectives"]
+    IGNORED_GROUPS: t.ClassVar[tuple[str, ...]] = ()  # ["ExportConditions", "ExportConditionObjectives"]
     IGNORED_TAGS = ("Name", "AdditionalTemplates", "ExportAsAction", "ExportAsCondition", "ExportAsConditionObjective")
 
     def __init__(self, node: et._Element, parent: NamedElement[MetaPropertyCache] | None, cache: MetaPropertyCache):
@@ -323,11 +324,14 @@ class PropertyGroup(Group["MetaPropertyCache"]):
 
             self._propagate_default_container_values(child_element, child)
 
+
 class MetaPropertyCache(ElementCache[MetaProperty, PropertyGroup]):
     """Parses the meta description file 'properties-toolone.xml' containing discribing all attributes and value types."""
 
     def __init__(self, path: Path, unpacked_path: Path, datasets: DatasetCache, texts: TextCache):
         super().__init__(path)
+
+        TemplateAttribute.TEMPLATE_CACHE = None  # Gracefully handle loading the caches twice in the same Python session
 
         self.unpacked_path = unpacked_path
         self.datasets = datasets
@@ -348,8 +352,6 @@ class MetaPropertyCache(ElementCache[MetaProperty, PropertyGroup]):
                 group = PropertyGroup(element, None, self)
                 self.groups[group.name] = group
 
-
-
     def _calculate_all_value_definitions(self):
         def process_node(element: et._Element):
             if element.tag == "DataType" and element.text:
@@ -362,4 +364,3 @@ class MetaPropertyCache(ElementCache[MetaProperty, PropertyGroup]):
                 process_node(child)
 
         process_node(self.tree.getroot())
-

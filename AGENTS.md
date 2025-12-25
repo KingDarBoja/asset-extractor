@@ -3,17 +3,74 @@
 
 This guide documents how to navigate and extract data from Anno 117's asset structure using the asset-extractor library.
 
+## Project Overview
+
+Asset Extractor is a modular Python library for reading Anno 117 game data files, resolving dependencies, and converting them into legible formats. The project consists of three main modules:
+
+1. **Extraction** (`assetextractor/extraction/`) - Opens RDA files and extracts XML, DDS, and CFG files to a cache directory using RDAConsole.exe
+2. **Parsing** (`assetextractor/parsing/core/`) - Reads XML files and reconstructs their hierarchical structure in memory with full inheritance resolution
+3. **Conversion** (`assetextractor/conversion/`) - Generates excerpts in different formats (HTML, JSON) from the parsed asset data
+
+The library provides a complete object model for navigating Anno 117's asset system, including items, buffs, buildings, templates, localized text, and UI mappings.
+
 ## Table of Contents
 
-1. [Class Reference](#class-reference)
-2. [Basic Setup](#basic-setup)
-3. [Item Structure](#item-structure)
-4. [Buff System](#buff-system)
-5. [UI Text Mapping](#ui-text-mapping)
-6. [Boost Conditions (ItemWithBoost)](#boost-conditions-itemwithboost)
-7. [Finding Item Sources](#finding-item-sources)
-8. [Asset Pools](#asset-pools)
-9. [Common Patterns](#common-patterns)
+1. [Running Scripts and Modules](#running-scripts-and-modules)
+2. [Class Reference](#class-reference)
+3. [Basic Setup](#basic-setup)
+4. [Item Structure](#item-structure)
+5. [Buff System](#buff-system)
+6. [UI Text Mapping](#ui-text-mapping)
+7. [Boost Conditions (ItemWithBoost)](#boost-conditions-itemwithboost)
+8. [Finding Item Sources](#finding-item-sources)
+9. [Asset Pools](#asset-pools)
+10. [Common Patterns](#common-patterns)
+
+## Running Scripts and Modules
+
+### Important: Module vs File Execution
+
+When running Python scripts in this project, you **must** run them as modules using the `-m` flag, not as file paths. This ensures the Python import system can find the `assetextractor` package.
+
+**Correct:**
+```bash
+# Run as a module (project root is automatically added to sys.path)
+uv run python -m assetextractor.conversion.calculator.building-sizes
+uv run python -m assetextractor.extraction.extract
+uv run python -m assetextractor.versioning
+```
+
+**Incorrect:**
+```bash
+# Running as a file path - will fail with ModuleNotFoundError
+uv run python assetextractor/conversion/calculator/building-sizes.py
+```
+
+**Testing with pytest:**
+```bash
+# Pytest automatically handles module imports correctly
+uv run pytest                                                          # Run all tests
+uv run pytest -v                                                       # Verbose output
+uv run pytest tests/integration/verify_building_sizes.py              # Specific file
+uv run pytest tests/integration/verify_building_sizes.py::test_csv_loading -v  # Specific test
+uv run pytest -k "building_size"                                      # Tests matching keyword
+```
+
+### Converting File Paths to Module Names
+
+To convert a file path to a module name:
+1. Remove the project root directory
+2. Remove the `.py` extension
+3. Replace path separators (`/` or `\`) with dots (`.`)
+
+Examples:
+- `assetextractor/conversion/calculator/building-sizes.py` → `assetextractor.conversion.calculator.building-sizes`
+- `assetextractor/extraction/extract.py` → `assetextractor.extraction.extract`
+- `tests/integration/test_buff_ui.py` → `tests.integration.test_buff_ui`
+
+### Running from Different Directories
+
+Always run scripts from the **project root** directory (`C:\dev\asset-extractor`). The `-m` flag assumes you're at the root of the package structure.
 
 ## Class Reference
 
@@ -432,6 +489,8 @@ The following datasets have automatic UI text mappings:
 - **ItemAllocation** (3 values): Ship, Villa, None
 - **Scope** (12 values): Local, Radius, Area, Session, Meta, Island, VisitorHarbour, Guild, Expedition, Trade, Shared, QuestGiver
 - **BuffUpgradeType** (~100+ values): BuffProductivity, BuffSpeed, BuffHitpoints, BuffMaintenance, BuffLoadingSpeed, BuffAttackRange, etc.
+- **NeedAttributeType** (8 values): Population, Money, Happiness, Health, FireSafety, Belief, Knowledge, Prestige
+- **IncidentType** (6 values): Fire, Unrest, Disease, Inferno, Rebellion, Plague (uses special pattern via IncidentInfection assets)
 - **NotSockableReason** (4 values): WrongAllocation, Duplicate, Exclusive, NoSpaceLeft
 - **SocketExclusiveGroup**: Various exclusive socket groups
 - **ItemType**: Specialist, Captains, etc.
@@ -523,13 +582,43 @@ for buff_entry in effect.Buffs:
                     buff_display = text_obj.values.get("english")  # "Productivity"
 ```
 
+### NeedAttributeType Example
+
+When working with population attributes or boost conditions, NeedAttributeType mappings provide localized text and icons:
+
+```python
+# Access NeedAttributeType UI text
+ui_cache = assets.properties.ui_text_cache
+
+# Get mapping for a need attribute
+mapping = ui_cache.get_ui_text("NeedAttributeType", "Health")
+if mapping:
+    text = mapping.text          # Text object with "Health" in all languages
+    icon = mapping.icon          # FileNameAttribute for the health icon
+    english = text.values.get("english")  # "Health"
+
+# Example: Processing AdditionalNeedAttributes from a buff
+buff_dict = buff.find("BuildingUpgrade.AdditionalAttributes")
+if buff_dict and buff_dict.value:
+    for literal, attr in buff_dict.value.items():
+        # literal is a NeedAttributeType value (e.g., "Happiness", "Health")
+        mapping = ui_cache.get_ui_text("NeedAttributeType", literal)
+        if mapping:
+            attr_name = mapping.text.values.get("english")  # Localized name
+            attr_icon = mapping.icon                        # Icon for display
+            value = attr.AmountOrPercent()                  # Numeric value
+            print(f"{attr_name}: {value}")
+```
+
 ### Configuration
 
 The UI text mappings are loaded from three configuration assets:
 
-1. **ItemInfotipTextFeature (GUID 142928)**: Buff upgrade types and their variants
+1. **ItemInfotipTextFeature (GUID 142928)**: Buff upgrade types, need attribute types, and their variants
 2. **ItemBalancing (GUID 6000017)**: Item properties (rarity, niche, scope, allocation)
 3. **BuffConfig (GUID 52456)**: Buff category names
+
+**Note**: IncidentType uses a special pattern that loads text from IncidentInfection template assets rather than configuration assets.
 
 To add support for new datasets, edit `CONFIG_ASSETS` in `assetextractor/parsing/core/uitext.py`:
 
@@ -539,6 +628,7 @@ CONFIG_ASSETS = {
         "path": "ItemInfotipTextFeature.BuffUpgradeTextAndIcons",
         "mappings": {
             "BuffUpgradeType": "{}.Text",  # {} is replaced with literal value
+            "NeedAttributeType": "BuffAdditionalNeedAttributes.Attributes.{}.Text",
         },
         "variants": {
             "BuffConstructionCost": ["ShipyardText", "RecruitmentText"],

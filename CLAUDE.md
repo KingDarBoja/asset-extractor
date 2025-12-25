@@ -31,7 +31,10 @@ The project is organized into three main modules under `assetextractor/`:
 ### 3. Conversion (`assetextractor/conversion/`)
 - **Purpose**: Generate excerpts in different formats (HTML, JSON)
 - **Asset Browser** (`assetbrowser/`): HTML converter using Jinja2 templates
-- **Status**: Partially implemented
+  - Outputs to `config.assetbrowser_dir` (configurable in config.json)
+  - Requires `Config` object passed to `Converter` constructor
+- **Statistics** (`statistics/`): Item extraction and Google Sheets export
+- **Status**: Fully implemented
 
 ### 4. Versioning (`assetextractor/versioning/`)
 - **Purpose**: Track asset changes across game versions using SQLite database
@@ -105,17 +108,26 @@ test.cmd --help
 extract.cmd
 # Or manually: uv run python -m assetextractor.extraction.extract
 
-# Main entry point
-uv run main
+# Generate asset browser only
+uv run python main.py
 
-# Run asset browser converter directly
-uv run assetextractor/conversion/assetbrowser/convert.py
+# Generate asset browser + create version snapshot + generate version report
+uv run python main.py --version "1.0.1"
+
+# Automated release build (extract, generate, snapshot, archive, export to Google Sheets)
+new_version.bat
 ```
 
 ### Asset Versioning
 ```bash
-# Create version snapshot
+# Create version snapshot (standalone)
 uv run python -m assetextractor.versioning snapshot "1.0.0" --description "Launch version"
+
+# Create snapshot during asset browser generation (recommended - loads assets only once)
+uv run python main.py --version "1.0.1"
+
+# Generate HTML version report
+uv run python -m assetextractor.versioning report "1.0.0" "1.0.1" --output results/assetbrowser/
 
 # Compare two versions
 uv run python -m assetextractor.versioning diff "1.0.0" "1.0.1"
@@ -132,8 +144,12 @@ uv run python -m assetextractor.versioning [command] --help
 
 ## Configuration
 
-- **config.json**: Contains `game_path` (Anno installation) and `cache_path` (extracted files location)
+- **config.json**: Contains:
+  - `game_path`: Anno installation directory
+  - `cache_path`: Extracted files location (cache directory)
+  - `assetbrowser_dir`: Output directory for asset browser HTML files
 - **config.template.json**: Template for configuration setup
+- All paths can be relative (resolved from config.json location) or absolute
 
 ## Key Concepts
 
@@ -141,6 +157,38 @@ uv run python -m assetextractor.versioning [command] --help
 - **Meta Definitions**: Each attribute has metadata in `properties-toolone.xml` defining data types and constraints
 - **Datasets**: Ordered collections of string literals (like enums) referenced by certain attributes
 - **GUID System**: Assets are identified by unique GUIDs found in `Values/Standard/GUID`
+
+## Release Workflow
+
+### Automated Release Build (`new_version.bat`)
+
+The `new_version.bat` script automates the complete release process:
+
+1. **Prompts for version number** (e.g., "1.0.1")
+2. **Extracts RDA files** from game using `extract.cmd`
+3. **Generates asset browser** and creates snapshot using `main.py --version`
+4. **Creates 7z archive** with LZMA2 compression (1GB dict, level 7)
+   - Archive name: `assetbrowser-YYYY-MM-DD.7z`
+   - Source: `config.assetbrowser_dir`
+5. **Exports items to Google Sheets** (optional, requires credentials)
+
+**Requirements:**
+- 7-Zip must be in PATH
+- Google Sheets credentials in `gsheet_credentials.json` (optional)
+
+### Main.py Integration with Versioning
+
+When `main.py` is run with `--version` parameter:
+1. Loads assets **once** (performance optimization)
+2. Generates asset browser HTML files
+3. Creates version snapshot (reuses loaded assets)
+4. Generates HTML version report comparing to previous version
+5. All outputs go to `config.assetbrowser_dir`
+
+**Key Implementation Detail:**
+- `create_snapshot()` accepts optional `assets` parameter to avoid double-loading
+- Version report is automatically generated if 2+ versions exist in database
+- Use `--prev-version` to override default comparison (latest - 1)
 
 ## Important Implementation Notes
 

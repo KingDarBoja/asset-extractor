@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import typing as t
 from contextlib import suppress
 
@@ -16,12 +17,7 @@ from assetextractor.parsing.core.attributes import (
 )
 from assetextractor.parsing.core.common import ElementCache, Group, NamedElement, WeightedReference
 from assetextractor.parsing.core.properties import Attribute, DatasetCache, MetaPropertyCache
-from assetextractor.parsing.core.templates import (
-    NamedRefColT,
-    Template,
-    TemplateCache,
-    TemplateGroup,
-)
+from assetextractor.parsing.core.templates import NamedRefColT, Template, TemplateCache, TemplateGroup
 from assetextractor.parsing.core.texts import TextCache
 from assetextractor.parsing.core.uitext import BuffUI, UITextCache
 
@@ -87,12 +83,14 @@ class Asset(NamedElement["AssetCache"]):
 
         if template is None:
             raise ValueError(f"Template {template_name} not found for asset {self.guid}.")
-        self.template = template
 
+        self.template = template
         self.template.add_instance(self)
 
         for template_property in self.template.properties.values():
             self._process_property(template_property)
+
+        self._update_text()
 
     @property
     def identifier(self):
@@ -116,13 +114,32 @@ class Asset(NamedElement["AssetCache"]):
         self.properties[name] = property
         setattr(self, name, property)
 
+    def _update_text(self):
+        if self.text is None:
+            match = re.match(r"^[A-Z][a-z]*", self.template.name)
+            template_word = match.group(0) if match else ""
+
+            for path in [
+                f"{self.template.name}.{self.template.name}Name",
+                f"{self.template.name}.{template_word}Name",
+                "Decision.DecisionScreenConfig.Headline",
+            ]:
+                text_attr = self.find(path)
+
+                if isinstance(text_attr, TextAttribute) and text_attr() is not None:
+                    self.text = text_attr()
+                    return
+
     def resolve_inheritance(self, asset: Asset):
         self.base_asset = asset
         self.template = asset.template
+        self.template.add_instance(self)
         asset.instances[self.guid] = WeightedReference(self, asset, "BaseAssetGUID")
 
         for base_property in asset.properties.values():
             self._process_property(base_property)
+
+        self._update_text()
 
     def set_referenced_by(self, source: Asset, reference: ReferenceAttribute):
         self.referenced_by[source.guid] = WeightedReference(source, self, reference.property_path)
@@ -598,7 +615,7 @@ class AssetCache(ElementCache[t.Any]):
 
                 if not element._is_initialized:
                     raise ValueError(f"AutoCreateAsset {element.full_path} [{element.source}] not initialized.")
-                
+
                 for attr in element:
                     process_property(attr)
 

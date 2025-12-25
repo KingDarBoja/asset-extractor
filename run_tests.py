@@ -5,12 +5,22 @@ This script provides convenient ways to run the test suite with various options.
 """
 
 import argparse
+import os
 import subprocess
 import sys
+from pathlib import Path
 
 
 def main():
     """Run tests with specified options."""
+    # Add project root to PYTHONPATH so assetextractor module can be imported
+    project_root = Path(__file__).parent.resolve()
+    env = os.environ.copy()
+    pythonpath = str(project_root)
+    if "PYTHONPATH" in env:
+        pythonpath = f"{pythonpath}{os.pathsep}{env['PYTHONPATH']}"
+    env["PYTHONPATH"] = pythonpath
+
     parser = argparse.ArgumentParser(description="Run asset-extractor integration tests")
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Verbose output (shows individual test names)"
@@ -91,7 +101,7 @@ def main():
     print(f"Running: {' '.join(cmd)}")
     print("-" * 80)
 
-    result = subprocess.run(cmd)
+    result = subprocess.run(cmd, env=env)
     sys.exit(result.returncode)
 
 

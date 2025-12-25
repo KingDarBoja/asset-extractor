@@ -8,6 +8,7 @@ from pathlib import Path
 class Config:
     game_path: Path
     cache_path: Path
+    assetbrowser_dir: Path
 
     @classmethod
     def from_json(cls, path: Path | str) -> t.Self:
@@ -18,9 +19,9 @@ class Config:
         with path.open("r") as f:
             data = json.load(f)
 
-        for cfg_path in ["game_path", "cache_path"]:
+        for cfg_path in ["game_path", "cache_path", "assetbrowser_dir"]:
             data[cfg_path] = Path(data[cfg_path])
             if not data[cfg_path].is_absolute():
                 data[cfg_path] = config_folder / data[cfg_path]
 
-        return cls(Path(data["game_path"]), Path(data["cache_path"]))
+        return cls(Path(data["game_path"]), Path(data["cache_path"]), Path(data["assetbrowser_dir"]))
