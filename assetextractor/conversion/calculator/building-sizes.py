@@ -132,17 +132,22 @@ class Converter:
         name_lower = asset.name.lower()
         template_name = asset.template.name
 
-        # Check for modular building types
-        modular_keywords = ["wall", "aqueduct", "field"]
-        modular_templates = ["Wall", "Aqueduct", "Field", "MilitaryWall"]
+        # Walls (excluding gates which are handled separately or by IFO)
+        # Note: Gates are handled in get_custom_size_for_special_buildings which is called first
+        if "wall" in name_lower or template_name in ["Wall", "MilitaryWall"]:
+            return True
 
-        # Check name
-        for keyword in modular_keywords:
-            if keyword in name_lower:
-                return True
+        # Aqueducts
+        if "aqueduct" in name_lower or template_name == "Aqueduct":
+            # Exclude Basin and Distribution buildings which have real sizes
+            return not ("basin" in name_lower or "distribution" in name_lower)
 
-        # Check template
-        return template_name in modular_templates
+        # Fields
+        if "field" in name_lower or template_name == "Field":
+            # Only field modules are 1x1 (e.g. "Module Field Roman Oats")
+            return "module" in name_lower
+
+        return False
 
     @staticmethod
     def get_building_size_from_ifo(ifo_path: str | Path) -> tuple[int, int] | None:
@@ -162,7 +167,9 @@ class Converter:
             Tuple of (width, height) in grid cells, or None if calculation failed
         """
         try:
-            ifo_tree = etree.parse(ifo_path)
+            # Use recover=True to handle non-standard XML (e.g. </> closing tags)
+            parser = etree.XMLParser(recover=True)
+            ifo_tree = etree.parse(ifo_path, parser)
 
             # Strategy 1: BuildBlocker/Position corners
             corners: list[list[float]] = []
@@ -397,6 +404,11 @@ class Converter:
                 self.building_sizes[asset.guid] = building_size
                 continue
 
+            # If modular infrastructure (walls, aqueducts, fields), force 1x1
+            if self.is_modular_infrastructure(asset):
+                self.building_sizes[asset.guid] = (1, 1)
+                continue
+
             ifo_path = self.get_building_ifo_path(asset)
             error_category = None
             error_details = ""
@@ -436,12 +448,8 @@ class Converter:
                 # Default to 1x1
                 self.building_sizes[asset.guid] = (1, 1)
 
-                # For modular infrastructure (walls, aqueducts, fields), silently accept 1x1
-                # Don't track as error or print message
-                if self.is_modular_infrastructure(asset):
-                    continue
-
                 # Track the error for non-infrastructure buildings
+                # Note: modular infrastructure is already handled above
                 if error_category is not None:
                     error = SizeExtractionError(
                         guid=asset.guid, name=asset.name or "Unknown", category=error_category, details=error_details
