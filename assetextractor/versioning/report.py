@@ -148,4 +148,4 @@ def _get_templates_to_report(db: VersionDatabase, version1_str: str, version2_st
 
 def _should_include_template(template_name: str) -> bool:
     """Check if template should be included in report."""
-    return template_name in ("Item", "ItemWithBoost") or "Pool" in template_name
+    return True #template_name in ("Item", "ItemWithBoost", "CityStatus", ) or "Pool" in template_name

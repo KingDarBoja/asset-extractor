@@ -81,7 +81,7 @@ def main():
 
     # --- Load Assets ---
     print("Loading assets...")
-    config = Config.from_json(Path(__file__).parent / "../../../../config.json")
+    config = Config.from_json(Path(__file__).parent / "../../../config.json")
     assets = AssetCache.load(config)
 
     # --- Create or Open Spreadsheet ---

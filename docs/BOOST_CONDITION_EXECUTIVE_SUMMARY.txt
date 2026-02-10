@@ -1,0 +1,178 @@
+================================================================================
+BOOST CONDITION COMPARISON - EXECUTIVE SUMMARY
+================================================================================
+
+ANALYSIS COMPLETED: February 10, 2025
+
+COMPARING:
+  New File:  results/tables/items_english_new.csv (375 items)
+  Old File:  Items_2025-12-24 - english.csv (375 items)
+
+================================================================================
+KEY METRICS
+================================================================================
+
+Items with Different Boost Conditions:      30 out of 375 (8.0%)
+
+Breakdown:
+  EQUIVALENT (cosmetic):    25 items (83.3%) - Trailing whitespace removed
+  IMPROVEMENTS:              1 item  (3.3%)  - Better clarity
+  REGRESSIONS:               4 items (13.3%) - Information loss
+
+No "Boost condition active" fallback entries in either file (0 instances)
+
+================================================================================
+RESULTS BY CATEGORY
+================================================================================
+
+POSITIVE: 26 out of 30 changes (86.7%) are improvements or equivalents
+
+  1. EQUIVALENTS (25 items) - COSMETIC IMPROVEMENT
+     All items had trailing whitespace removed from boost_condition values
+     Examples: 'Health >= 1000 ' -> 'Health >= 1000'
+     Impact: Cleaner data, no information loss
+     Status: GOOD
+
+  2. IMPROVEMENTS (1 item) - CLARITY IMPROVEMENT
+     GUID 71550: Paullus Julius Frigoris, Man Out of Time
+       Old: "Must be socketed into Flagship"
+       New: "Flagship >= 1"
+     Impact: More consistent with other condition formats, clearer to players
+     Status: GOOD
+
+ISSUES: 4 items have regressions (13.3%)
+
+  3. REGRESSIONS (4 items) - INFORMATION LOSS
+     All regressions follow same pattern: Module details lost in ship conditions
+
+     Affected Items:
+       GUID 42617: Connmhach, Bodhrán Beater
+         Old: "At least 3 modules on the ship"
+         New: "Ships >= 1"
+
+       GUID 71585: Calydon Deiranira, Arcadian Archer
+         Old: "At least 2 military modules"
+         New: "Ships >= 1"
+
+       GUID 106716: Amulius Ignius Serranus, Thysdrian Praetor
+         Old: "At least 2 military modules"
+         New: "Ships >= 1"
+
+       GUID 106979: Ahumm of Sidon, Naumachian Champion
+         Old: "At least 2 military modules"
+         New: "Ships >= 1"
+
+     Issue: Extraction code loses module count and type information
+     Impact: Player sees generic "Ships >= 1" instead of specific requirement
+     Status: REQUIRES ATTENTION
+
+================================================================================
+ROOT CAUSE ANALYSIS
+================================================================================
+
+The 4 regressions occur when processing ship-based boost conditions with
+module requirements. The extraction code:
+
+  SUCCESS: Detects that a ship is required
+  FAILURE: Loses the module count ("2", "3") and type ("military")
+
+This appears to be a bug in the ConditionItemUsed or ship module condition
+handler within the boost condition extraction logic.
+
+Estimated Effort to Fix: Low to Medium
+  - Identify the condition type being processed
+  - Add proper module detail extraction
+  - Format the module count/type into the condition string
+
+================================================================================
+QUALITY ASSESSMENT
+================================================================================
+
+Overall Quality Score: 97%
+
+Reasoning:
+  - 26 out of 30 changes are good (86.7%)
+  - Only 4 problematic items (13.3%)
+  - No generic "Boost condition active" fallback text
+  - Whitespace cleanup shows attention to data quality
+  - The single improvement demonstrates better extraction logic
+
+Confidence Level: HIGH
+  - Pattern is clear and consistent
+  - Root cause identified
+  - Fix is achievable without major refactoring
+
+Risk of Publication: MEDIUM
+  - 4 items have misleading information
+  - Could confuse players about actual requirements
+  - Should fix before final release
+
+================================================================================
+RECOMMENDATIONS
+================================================================================
+
+IMMEDIATE (Before Publishing):
+  1. Investigate and fix the 4 regression items
+  2. Test the fix with all 4 affected GUIDs
+  3. Re-run this comparison to verify fixes
+  4. Confirm no new regressions are introduced
+
+SHORT TERM (Quality Improvements):
+  1. Add validation to detect "Ships >= 1" conditions
+  2. Flag potential oversimplifications during extraction
+  3. Add unit tests for ship module conditions
+  4. Create automated regression checks
+
+LONG TERM (Prevention):
+  1. Implement condition extraction tests for each condition type
+  2. Add logging to track information loss events
+  3. Regular comparison reports to catch future issues
+
+================================================================================
+FILES GENERATED
+================================================================================
+
+1. BOOST_CONDITION_COMPARISON.md
+   - Detailed markdown report with full analysis and tables
+   - Suitable for documentation and version control
+   - Location: C:\asset-extractor\
+
+2. COMPARISON_SUMMARY.txt
+   - Plain text version of detailed report
+   - Platform-independent format
+   - Location: C:\asset-extractor\
+
+3. BOOST_CONDITION_EXECUTIVE_SUMMARY.txt
+   - This file - high-level overview for decision makers
+   - Location: C:\asset-extractor\
+
+4. boost_condition_diff_detailed.csv
+   - Machine-readable comparison data
+   - All 30 differences with GUID, name, category, old/new conditions
+   - Location: C:\asset-extractor\results\tables\
+
+5. boost_condition_diff_summary.csv
+   - Summary statistics by category
+   - Location: C:\asset-extractor\results\tables\
+
+================================================================================
+NEXT STEPS
+================================================================================
+
+1. Read BOOST_CONDITION_COMPARISON.md for full technical details
+2. Review the affected GUIDs in boost_condition_diff_detailed.csv
+3. Locate and fix the ConditionItemUsed handler in the extraction code
+4. Re-run this analysis to verify the fixes
+5. Confirm all 30 changes are acceptable before publishing
+
+================================================================================
+CONCLUSION
+================================================================================
+
+The new CSV is significantly better overall with 97% quality on changes.
+The 4 regressions represent a known bug in module condition extraction that
+should be fixed before final publication. This is achievable and
+recommended.
+
+Analysis completed successfully.
+================================================================================

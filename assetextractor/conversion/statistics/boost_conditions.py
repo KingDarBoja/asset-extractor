@@ -5,7 +5,7 @@ from typing import Any, TypeVar
 from assetextractor.conversion.statistics.constants import COMPARISON_OPERATORS, SOURCE_TEXT_IDS
 from assetextractor.conversion.statistics.utils import get_localized_name
 from assetextractor.parsing.core.assets import Asset, AssetCache
-from assetextractor.parsing.core.attributes import Attribute, DictAttribute, TemplateAttribute
+from assetextractor.parsing.core.attributes import Attribute, DictAttribute, Property, TemplateAttribute
 from assetextractor.parsing.core.texts import Text, TextCache
 
 T = TypeVar("T")
@@ -68,7 +68,7 @@ class BoostConditionParser:
         return zone_names, special_state_names
 
     @staticmethod
-    def find_val(obj: Asset | TemplateAttribute, path: str, value_type: type[T]) -> T | None:
+    def find_val(obj: Asset | TemplateAttribute | DictAttribute | Property, path: str, value_type: type[T]) -> T | None:
         """Find and return a value at the given path with strict typing.
 
         Args:
@@ -177,8 +177,8 @@ class BoostConditionParser:
         """Parse ConditionObjectCount with Matcher support for ship configuration."""
         try:
             if hasattr(condition, "ConditionObjectCount"):
-                amount = self.find_val(condition, "ConditionObjectCount.Amount", float)
-                comparison_op = self.find_val(condition, "ConditionObjectCount.ComparisonOp", str)
+                amount = self.find_val(condition, "ConditionObjectCount.Amount", (int, float))
+                comparison_op = self.find_val(condition, "ConditionObjectCount.ComparisonOp", (int, str))
                 obj: Asset | None = condition.find_ref("ObjectFilter.ObjectGUID")
 
                 if amount is None or comparison_op is None:
@@ -191,7 +191,7 @@ class BoostConditionParser:
                     if matcher is not None:
                         ship_config = matcher.find("Matcher.Criterion.MatcherCriterionShipConfiguration")
                         
-                        if isinstance(ship_config, TemplateAttribute):
+                        if isinstance(ship_config, (TemplateAttribute, DictAttribute, Property)):
                             req_modules = self.find_val(ship_config, "RequiredModuleCount", int)
                             req_military = self.find_val(ship_config, "RequiredMilitaryModuleCount", int)
                             negate = self.find_val(ship_config, "Negate", bool)
@@ -227,8 +227,8 @@ class BoostConditionParser:
         try:
             if hasattr(condition, "ConditionNeedAttributeCounter"):
                 need_type_raw = self.find_val(condition, "ConditionNeedAttributeCounter.NeedAttributeType", str)
-                amount = self.find_val(condition, "ConditionNeedAttributeCounter.NeedAttributeAmount", float)
-                comparison_op = self.find_val(condition, "ConditionNeedAttributeCounter.ComparisonOpType", str)
+                amount = self.find_val(condition, "ConditionNeedAttributeCounter.NeedAttributeAmount", (int, float))
+                comparison_op = self.find_val(condition, "ConditionNeedAttributeCounter.ComparisonOpType", (int, str))
                 is_global = self.find_val(condition, "ConditionNeedAttributeCounter.UseGlobalSum", bool)
 
                 if need_type_raw is None or amount is None or comparison_op is None:
@@ -281,10 +281,10 @@ class BoostConditionParser:
         """Parse ConditionPlayerCounter with context building and scope."""
         try:
             if hasattr(condition, "ConditionPlayerCounter"):
-                player_counter = self.find_val(condition, "ConditionPlayerCounter.PlayerCounter", int)
-                comparison_op = self.find_val(condition, "ConditionPlayerCounter.ComparisonOp", str)
-                counter_amount = self.find_val(condition, "ConditionPlayerCounter.CounterAmount", float)
-                scope = self.find_val(condition, "ConditionPlayerCounter.CounterScope", str)
+                player_counter = self.find_val(condition, "ConditionPlayerCounter.PlayerCounter", (int, str))
+                comparison_op = self.find_val(condition, "ConditionPlayerCounter.ComparisonOp", (int, str))
+                counter_amount = self.find_val(condition, "ConditionPlayerCounter.CounterAmount", (int, float))
+                scope = self.find_val(condition, "ConditionPlayerCounter.CounterScope", (int, str))
 
                 if comparison_op is None or counter_amount is None:
                     return None
@@ -319,9 +319,9 @@ class BoostConditionParser:
         """Parse ConditionEmperorRelation with reputation zones and special states."""
         try:
             if hasattr(condition, "ConditionEmperorRelation"):
-                allowed_zones = self.find_val(condition, "ConditionEmperorRelation.AllowedZones", list[str])
+                allowed_zones = self.find_val(condition, "ConditionEmperorRelation.AllowedZones", list)
                 allowed_special_states = self.find_val(
-                    condition, "ConditionEmperorRelation.AllowedSpecialStates", list[str]
+                    condition, "ConditionEmperorRelation.AllowedSpecialStates", list
                 )
 
                 parts: list[str] = []
@@ -390,7 +390,7 @@ class BoostConditionParser:
         try:
             if hasattr(condition, "ConditionTradeRouteCount"):
                 count = self.find_val(condition, "ConditionTradeRouteCount.TradeRouteCount", int)
-                count_op = self.find_val(condition, "ConditionTradeRouteCount.CountComparisonOp", str)
+                count_op = self.find_val(condition, "ConditionTradeRouteCount.CountComparisonOp", (int, str))
                 if count is not None and count_op is not None:
                     text_obj = self.texts.get(SOURCE_TEXT_IDS["trade_routes"])
                     subject = text_obj() if text_obj is not None else "Trade routes"
