@@ -605,8 +605,8 @@ class UITextCache:
             ("Movement", "ReduceNegativeWindImpact"): "BuffReduceNegativeSpeedImpactOfWind",
             # RepairCraneUpgrade
             ("RepairCrane", "HealPerMinute"): "BuffHealRate",
-            # WorkforceModifier - maps to specific buff
-            ("Building", "WorkforceModifier"): "BuffWorkforceAmount",
+            # WorkforceModifier - all uses target residences (workforce provided, not needed)
+            ("Building", "WorkforceModifier"): "BuffOutputWorkforce",
             ("Building", "AdditionalAttributes"): "BuffAdditionalNeedAttributes",
             ("Building", "AdditionalWorkforces"): "BuffOutputWorkforce",
             # AreaPassiveTradeUpgrade

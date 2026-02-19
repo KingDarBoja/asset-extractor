@@ -41,6 +41,17 @@ for dlc in uplay_template.assets:
 | 67908 | CDLC3        | CosmeticDLC | 0 |
 | 93584 | PreorderBonus| DLC         | 4 |
 
+## UIText Special Mappings: Workforce Context
+
+`BuildingUpgrade.WorkforceModifierInPercent` always targets **residence buildings** (not factories). It means "workforce provided by residents", not "workforce needed as maintenance". Therefore:
+
+- `("Building", "WorkforceModifier")` → maps to **`BuffOutputWorkforce`** (text: "Workforce from residents")
+- NOT `BuffWorkforceAmount` (text: "Workforce Needed") — that is for `MaintenanceUpgrade.WorkforceMaintenanceFactor`
+
+This was verified by checking all items in the game: every item using `BuildingUpgrade.WorkforceModifierInPercent` has its `Effect.Targets` set to residence asset pools exclusively.
+
+**Pitfall**: When adding new `special_mappings` in `get_buff_type_name()`, always verify whether an attribute is exclusively used in one context. Attributes like `WorkforceModifier` look like a maintenance cost but are semantically different for residences.
+
 ## Attribute Inheritance
 - **Strict Type Assumption**: The `resolve_inheritance` method in `Attribute` subclasses (in `attributes.py`) strictly assumes that the `default` parameter is an instance of the same subclass.
 - **Type Hinting**: Use `t.Self` for the `default` parameter to enforce this assumption.
