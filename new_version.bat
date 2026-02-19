@@ -4,6 +4,24 @@ setlocal enabledelayedexpansion
 :: new_version.bat - Automated release build script for asset-extractor
 :: This script performs a complete release build with versioning and archiving
 
+:: Check if 7-Zip is available
+where 7z >nul 2>nul
+if errorlevel 1 (
+    echo Error: 7-Zip not found in PATH
+    echo Please install 7-Zip and add it to your PATH, or edit this script to point to 7z.exe
+    echo Hit enter to continue without packing.
+    pause
+)
+
+:: Check if Google Sheets credentials file exists
+if not exist "gsheet_credentials.json" (
+    echo Warning: gsheet_credentials.json not found
+    echo Google Sheets export will be skipped.
+    echo Hit enter to continue without exporting.
+    pause
+)
+
+
 echo.
 echo ============================================================
 echo Asset Extractor - New Version Release Script
@@ -62,23 +80,20 @@ echo Creating archive: %ARCHIVE_NAME%
 echo Source directory: %ASSETBROWSER_DIR%
 echo.
 
-:: Check if 7-Zip is available
+:: Create archive with LZMA2, 1GB dictionary, compression level 7 (maximum)
 where 7z >nul 2>nul
 if errorlevel 1 (
-    echo Error: 7-Zip not found in PATH
-    echo Please install 7-Zip and add it to your PATH, or edit this script to point to 7z.exe
-    exit /b 1
+    echo Warning: 7-Zip not found, skipping archive creation.
+    goto skip_archive
 )
-
-:: Create archive with LZMA2, 1GB dictionary, compression level 7 (maximum)
 7z a -t7z -m0=lzma2 -mx=7 -md=1024m "%ARCHIVE_NAME%" ".\%ASSETBROWSER_DIR%\*"
 if errorlevel 1 (
     echo Error: Archive creation failed
     exit /b 1
 )
-
 echo.
 echo Archive created successfully: %ARCHIVE_NAME%
+:skip_archive
 
 :: Step 4: Export items to Google Sheets
 echo.
@@ -86,11 +101,16 @@ echo ============================================================
 echo Step 4/5: Exporting items to Google Sheets...
 echo ============================================================
 echo.
+if not exist "gsheet_credentials.json" (
+    echo Skipping: gsheet_credentials.json not found.
+    goto skip_gsheet
+)
 uv run python -m assetextractor.conversion.statistics.extract_items_to_gsheet
 if errorlevel 1 (
-    echo Warning: Google Sheets export failed (this may be expected if credentials are not configured)
+    echo Warning: Google Sheets export failed
     echo Continuing...
 )
+:skip_gsheet
 
 :: Step 5: Summary
 echo.
@@ -99,11 +119,11 @@ echo Step 5/5: Release build complete!
 echo ============================================================
 echo.
 echo Version: %VERSION%
-echo Archive: %ARCHIVE_NAME%
+echo Archive: %ARCHIVE_NAME% (if 7-Zip was available)
 echo Output directory: %ASSETBROWSER_DIR%
 echo.
 echo Next steps:
-echo   1. Upload %ARCHIVE_NAME% to your distribution platform
+echo   1. Upload %ARCHIVE_NAME% to your distribution platform (if created)
 echo   2. Verify Google Sheets export (if configured)
 echo   3. Update release notes
 echo.
