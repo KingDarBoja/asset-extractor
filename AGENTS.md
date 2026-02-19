@@ -841,48 +841,6 @@ comparison_map = {
 op_symbol = comparison_map.get(condition.ComparisonOp(), ">=")
 ```
 
-### Parsing Pattern
-
-Use a cascade of try-except blocks to check each condition type:
-
-```python
-def extract_boost_condition(item_asset: Asset) -> str:
-    try:
-        condition_attr = item_asset.find("ItemWithBoost.BoostCondition.PreConditionList.Condition")
-        if not condition_attr:
-            return ""
-
-        condition = condition_attr
-
-        # Try ConditionAlwaysTrue first
-        try:
-            if hasattr(condition, 'ConditionAlwaysTrue'):
-                # Check if there are other conditions
-                has_other = any(hasattr(condition, ct) for ct in [
-                    'ConditionObjectCount', 'ConditionPlayerCounter', ...
-                ])
-                if not has_other:
-                    return "Always active"
-        except:
-            pass
-
-        # Try ConditionObjectCount
-        try:
-            if hasattr(condition, 'ConditionObjectCount'):
-                amount = condition.ConditionObjectCount.Amount()
-                obj_guid = condition.ObjectFilter.ObjectGUID()
-                # Build condition string...
-                return result
-        except:
-            pass
-
-        # Try other condition types...
-
-        # Fallback for unhandled conditions
-        return "Boost condition active"
-    except:
-        return ""
-```
 
 ### Multiple Conditions
 

@@ -95,16 +95,25 @@ echo.
 echo Archive created successfully: %ARCHIVE_NAME%
 :skip_archive
 
-:: Step 4: Export items to Google Sheets
+:: Step 4: Export items to CSV and Google Sheets
 echo.
 echo ============================================================
-echo Step 4/5: Exporting items to Google Sheets...
+echo Step 4/5: Exporting items...
 echo ============================================================
 echo.
+
+echo Saving items_english_%VERSION%.csv...
+uv run python -m assetextractor.conversion.statistics.extract_items_to_csv --version "%VERSION%"
+if errorlevel 1 (
+    echo Warning: CSV export failed
+    echo Continuing...
+)
+
 if not exist "gsheet_credentials.json" (
-    echo Skipping: gsheet_credentials.json not found.
+    echo Skipping Google Sheets export: gsheet_credentials.json not found.
     goto skip_gsheet
 )
+echo Uploading to Google Sheets...
 uv run python -m assetextractor.conversion.statistics.extract_items_to_gsheet
 if errorlevel 1 (
     echo Warning: Google Sheets export failed

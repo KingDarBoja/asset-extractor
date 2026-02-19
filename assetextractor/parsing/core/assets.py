@@ -60,12 +60,14 @@ class Asset(NamedElement["AssetCache"]):
         self.referenced_by: dict[int, WeightedReference] = dict()
 
         self.unlocked_by_dlcs: dict[int, WeightedReference] = dict()
+        self.dlc_unlocks: dict[int, WeightedReference] = dict()
         self.in_reward_pool: dict[int, WeightedReference] = dict()
         self.in_asset_pool: dict[int, WeightedReference] = dict()
         self.named_reference_collections: NamedRefColT = {
             "Instances": self.instances,
             "Referenced by": self.referenced_by,
             "Unlocked by DLCs": self.unlocked_by_dlcs,
+            "DLC Unlocks": self.dlc_unlocks,
             "In Reward Pools": self.in_reward_pool,
             "In Asset Pools": self.in_asset_pool,
         }  # Referenced by, construction cost, etc.
@@ -623,20 +625,25 @@ class AssetCache(ElementCache[t.Any]):
             process_property(property)
 
     def resolve_dlc_unlocks(self):
-        template_list: list[Template] = []
+        uplay_product_template = self.templates["UplayProduct"]
+        if uplay_product_template is None:
+            return
 
-        for template in self.templates:
-            if "Locked" in template and len(template.instances) > 0:
-                template_list.append(template)
+        for dlc_asset in uplay_product_template.assets:
+            unlocks_attr = dlc_asset.find("UplayProduct.UplayProductUnlocks")
+            if not isinstance(unlocks_attr, ListAttribute):
+                continue
 
-        for template in template_list:
-            for asset in template.assets:
-                dlc_attr = asset.find("Locked.DLCDependency")
-                assert isinstance(dlc_attr, ReferenceAttribute)
-                dlc = dlc_attr.value
-                if dlc is not None:
-                    weighted_reference = WeightedReference(source=asset, target=dlc)
-                    asset.unlocked_by_dlcs[dlc.guid] = weighted_reference
+            for item in unlocks_attr:
+                unlock_ref = item.UplayProductUnlock  # type: ignore[attr-defined]
+                if not isinstance(unlock_ref, ReferenceAttribute):
+                    continue
+                unlocked_asset = unlock_ref.value
+                if unlocked_asset is None:
+                    continue
+
+                dlc_asset.dlc_unlocks[unlocked_asset.guid] = WeightedReference(source=unlocked_asset, target=dlc_asset)
+                unlocked_asset.unlocked_by_dlcs[dlc_asset.guid] = WeightedReference(source=dlc_asset, target=unlocked_asset)
 
     def _initialize_ui_text_cache(self):
         """Initialize UI text cache after all assets are loaded.

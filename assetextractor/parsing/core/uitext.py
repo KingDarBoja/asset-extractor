@@ -1403,6 +1403,7 @@ class UITextCache:
             or attr_name == "BuffTransferSpeedUpgrade"
             or attr_name == "LandTax"
             or attr_name == "PassiveTradeProfitModifier"
+            or attr_name == "ProductivityUpgrade"
         ):
             percental = True
 
