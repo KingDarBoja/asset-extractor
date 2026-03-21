@@ -146,6 +146,6 @@ def _get_templates_to_report(db: VersionDatabase, version1_str: str, version2_st
     return sorted(templates)
 
 
-def _should_include_template(template_name: str) -> bool:
+def _should_include_template(template_name: str) -> bool:  # noqa: ARG001
     """Check if template should be included in report."""
     return True #template_name in ("Item", "ItemWithBoost", "CityStatus", ) or "Pool" in template_name

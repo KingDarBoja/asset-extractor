@@ -62,6 +62,15 @@ if errorlevel 1 (
     exit /b 1
 )
 
+echo Saving items_english_%VERSION%.csv...
+uv run python -m assetextractor.conversion.statistics.extract_items_to_csv --version "%VERSION%"
+if errorlevel 1 (
+    echo Warning: CSV export failed
+    echo Continuing...
+)
+
+pause
+
 :: Step 3: Zip the results
 echo.
 echo ============================================================
@@ -101,13 +110,6 @@ echo ============================================================
 echo Step 4/5: Exporting items...
 echo ============================================================
 echo.
-
-echo Saving items_english_%VERSION%.csv...
-uv run python -m assetextractor.conversion.statistics.extract_items_to_csv --version "%VERSION%"
-if errorlevel 1 (
-    echo Warning: CSV export failed
-    echo Continuing...
-)
 
 if not exist "gsheet_credentials.json" (
     echo Skipping Google Sheets export: gsheet_credentials.json not found.
