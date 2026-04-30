@@ -40,7 +40,7 @@ class Asset(NamedElement["AssetCache"]):
             raise ValueError(f"GUID missing in {node.text}.")
         self.guid = int(guid_text)
 
-        self.name = node.findtext("Values/Standard/Name")
+        self.name: str = node.findtext("Values/Standard/Name") or ""
 
         self.text = None
         if text_id := node.findtext("Values/Text/OasisId"):
@@ -165,7 +165,7 @@ class Asset(NamedElement["AssetCache"]):
             else:
                 return text[:120] + "..."
 
-        if self.name is not None:
+        if self.name:
             return self.name
 
         return "{" + self.identifier + "}"
@@ -274,11 +274,11 @@ class Asset(NamedElement["AssetCache"]):
         if template_word == "production":
             try:
                 regions_attr = self.find("Building.AssociatedRegions")
-                if regions_attr is not None:
-                    region_list = regions_attr()  # type: ignore
-                    if isinstance(region_list, list) and len(region_list) > 0:  # type: ignore
+                if isinstance(regions_attr, Attribute):
+                    region_list = t.cast("t.Optional[list[t.Any]]", regions_attr())
+                    if isinstance(region_list, list) and len(region_list) > 0:
                         # Get first region
-                        region_code = str(region_list[0])  # type: ignore
+                        region_code = str(region_list[0])
                         # Get canonical region name
                         region_name = get_region_canonical_name(region_code)
                         parts.append(region_name)
@@ -431,9 +431,10 @@ class Asset(NamedElement["AssetCache"]):
                 try:
                     if entry.find_ref("ItemLink") is not None:
                         weight_attr = entry.find("Weight")
-                        val = weight_attr()  # pyright: ignore
-                        weight = val if isinstance(val, int | float) else 1.0
-                        total_weight += weight
+                        if weight_attr is not None:
+                            val = weight_attr()
+                            weight = val if isinstance(val, int | float) else 1.0
+                            total_weight += weight
                 except (AttributeError, Exception):
                     pass
         else:  # AssetPool
@@ -462,7 +463,7 @@ class Asset(NamedElement["AssetCache"]):
                 if is_reward_pool:
                     weight_attr = entry.find("Weight")
                     if weight_attr is not None:
-                        val = weight_attr()  # pyright: ignore
+                        val = weight_attr()
 
                         if isinstance(val, int | float):
                             weight = val
@@ -543,6 +544,10 @@ class AssetCache(ElementCache[t.Any]):
             asset = Asset(element, self)
             self.elements[asset.guid] = asset
 
+        # Ensure datasets are loaded before resolving references and DLCs
+        # because DLC detection needs the Region dataset
+        _ = self.datasets.elements
+
         for asset in self.elements.values():
             self.resolve_inheritance(asset)
 
@@ -605,7 +610,8 @@ class AssetCache(ElementCache[t.Any]):
             if isinstance(element, ListAttribute):
                 for item in element:
                     for attr in item:
-                        process_attribute(attr)
+                        if not isinstance(attr, Property):
+                            process_attribute(attr)
 
             if isinstance(element, DictAttribute):
                 for attr in element:
@@ -625,25 +631,9 @@ class AssetCache(ElementCache[t.Any]):
             process_property(property)
 
     def resolve_dlc_unlocks(self):
-        uplay_product_template = self.templates["UplayProduct"]
-        if uplay_product_template is None:
-            return
+        from assetextractor.parsing.core.dlc_detection import DLCDetector
 
-        for dlc_asset in uplay_product_template.assets:
-            unlocks_attr = dlc_asset.find("UplayProduct.UplayProductUnlocks")
-            if not isinstance(unlocks_attr, ListAttribute):
-                continue
-
-            for item in unlocks_attr:
-                unlock_ref = item.UplayProductUnlock  # type: ignore[attr-defined]
-                if not isinstance(unlock_ref, ReferenceAttribute):
-                    continue
-                unlocked_asset = unlock_ref.value
-                if unlocked_asset is None:
-                    continue
-
-                dlc_asset.dlc_unlocks[unlocked_asset.guid] = WeightedReference(source=unlocked_asset, target=dlc_asset)
-                unlocked_asset.unlocked_by_dlcs[dlc_asset.guid] = WeightedReference(source=dlc_asset, target=unlocked_asset)
+        DLCDetector(self).detect()
 
     def _initialize_ui_text_cache(self):
         """Initialize UI text cache after all assets are loaded.

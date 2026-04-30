@@ -1,6 +1,4 @@
-"""
-Extracts item data from Anno 117 and saves it to a versioned CSV file.
-"""
+"""Extracts item data from Anno 117 and saves it to a versioned CSV file."""
 
 import argparse
 from pathlib import Path
@@ -9,7 +7,7 @@ from assetextractor.conversion.statistics.item_extractor import ItemExtractor
 from assetextractor.extraction.utils import Config
 from assetextractor.parsing.core.assets import AssetCache
 
-OUTPUT_DIR = Path(__file__).parent.parent.parent / "results/tables"
+OUTPUT_DIR = Path(__file__).parent.parent.parent.parent / "results/tables"
 
 
 def main() -> None:

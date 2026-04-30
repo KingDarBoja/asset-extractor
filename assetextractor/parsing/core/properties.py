@@ -296,6 +296,10 @@ class PropertyGroup(Group["MetaPropertyCache"]):
         if isinstance(element, ValueDefinition) and element.data_type == "Vector" and len(node.xpath("./Item")) >= 2:
             element.default = AttributeFactory.create(node, None, element, element.cache)
 
+        is_dataset_keyed_array = (
+            isinstance(element, ValueDefinition) and element.data_type == "Array" and element.dataset is not None
+        )
+
         for child in node.iterchildren():
             if child.tag == "LocaText":
                 continue  # exported and handeled separately
@@ -323,6 +327,21 @@ class PropertyGroup(Group["MetaPropertyCache"]):
                 continue
 
             self._propagate_default_container_values(child_element, child)
+
+        # After recursing into the children (which sets the inner ValueDefinition's default), the outer Array's
+        # default is rebuilt so it picks up the updated inner defaults. Without this, the per-literal default DictAttributes in the Array's default
+        # still hold references to the stale inner PrimitiveAttribute(0) from before propagation, and DictAttribute.resolve_inheritance (line 1518)
+        # overwrites the correct inner default with the stale one when an asset omits a literal.
+        if is_dataset_keyed_array:
+            assert isinstance(element, ValueDefinition) and element.dataset is not None
+            element.default = AttributeFactory.create(
+                AttributeFactory.create_default_node(
+                    element.name, element.data_type, next(iter(element.dataset.literals))
+                ),
+                element.parent,
+                element,
+                self.cache,
+            )
 
 
 class MetaPropertyCache(ElementCache[MetaProperty, PropertyGroup]):

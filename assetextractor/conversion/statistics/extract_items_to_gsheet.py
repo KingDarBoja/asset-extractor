@@ -7,11 +7,11 @@ with separate tabs for English and German.
 
 from pathlib import Path
 
-import gspread  # type: ignore
-import pandas as pd  # type: ignore
-from google.oauth2.service_account import Credentials  # type: ignore
-from gspread_dataframe import set_with_dataframe  # type: ignore
-from wand.image import Image  # type: ignore
+import gspread
+import pandas as pd  # pyright: ignore[reportMissingTypeStubs]
+from google.oauth2.service_account import Credentials
+from gspread_dataframe import set_with_dataframe  # pyright: ignore[reportMissingTypeStubs]
+from wand.image import Image  # pyright: ignore[reportMissingTypeStubs]
 
 from assetextractor.conversion.statistics.item_extractor import ItemExtractor
 from assetextractor.extraction.utils import Config
@@ -29,6 +29,8 @@ LANGUAGES = ["english", "german"]
 
 ICON_OUTPUT_DIR = Path(__file__).parent.parent.parent / "results/tables/icons"
 
+EXCLUDED_GUIDS = {149281, 149292}
+
 
 def save_icon_and_get_filename(asset: Asset | None, cache: dict[str, str], resize_factor: int = 8) -> str | None:
     """Saves a resized asset's icon locally and returns the filename, using a cache."""
@@ -39,7 +41,7 @@ def save_icon_and_get_filename(asset: Asset | None, cache: dict[str, str], resiz
     if icon is None or icon.value is None:
         return None
 
-    icon_path: str = icon.canonical_name
+    icon_path: str = str(icon.canonical_name)
     if icon_path in cache:
         return cache[icon_path]
 
@@ -57,7 +59,7 @@ def save_icon_and_get_filename(asset: Asset | None, cache: dict[str, str], resiz
         ICON_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         img_data = icon.get_image()
         if img_data is not None:
-            with Image(img_data) as img:
+            with Image(blob=img_data) as img:
                 img.resize(width=img.width // resize_factor, height=img.height // resize_factor)
                 img.format = "webp"
                 img.save(filename=str(output_path))
@@ -70,7 +72,7 @@ def save_icon_and_get_filename(asset: Asset | None, cache: dict[str, str], resiz
         return None
 
 
-def main():
+def main() -> None:
     """Main function to extract and upload item data."""
     # --- Authenticate with Google Sheets ---
     print("Authenticating with Google Sheets...")
@@ -100,6 +102,7 @@ def main():
         # 1. Extract items
         extractor = ItemExtractor(assets, language=lang)
         items_data = extractor.extract_all_items()
+        items_data = [item for item in items_data if item["guid"] not in EXCLUDED_GUIDS]
         df = pd.DataFrame(items_data)
 
         # 2. Add icon column - Icons won't load
@@ -110,6 +113,7 @@ def main():
         cols = [
             "guid",
             "name",
+            "version",
             "rarity",
             "niche",
             "trade_price",

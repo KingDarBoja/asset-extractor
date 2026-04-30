@@ -44,7 +44,7 @@ class UITextMapping:
     text_id: int | None = None
     text: Text | None = None
     icon: FileNameAttribute | None = None
-    variants: dict[str, int] = field(default_factory=dict)
+    variants: dict[str, int] = field(default_factory=dict)  # pyright: ignore[reportUnknownVariableType]
 
 
 @dataclass
@@ -312,7 +312,7 @@ class UITextCache:
                         variant_value = variant_attr()
                         if variant_value is not None:
                             # If it's a Text object, extract its ID
-                            variant_id = variant_value.id if hasattr(variant_value, "id") else variant_value
+                            variant_id = int(variant_value.id) if hasattr(variant_value, "id") else int(variant_value)
                             variants[variant_name] = variant_id
                     except Exception:
                         pass
@@ -487,7 +487,7 @@ class UITextCache:
             if infection_type_attr is None:
                 continue
 
-            infection_type = infection_type_attr()  # pyright: ignore
+            infection_type = infection_type_attr()
             if isinstance(infection_type, str) and asset.text is not None:
                 # Map the literal value to the asset
                 self.incident_type_mapping[infection_type] = asset
@@ -518,7 +518,7 @@ class UITextCache:
             if region_id_attr is None:
                 continue
 
-            region_id = region_id_attr()  # type: ignore
+            region_id = region_id_attr()
             if isinstance(region_id, str) and asset.text is not None:
                 # Map the literal value to the asset
                 self.region_mapping[region_id] = asset
@@ -588,6 +588,7 @@ class UITextCache:
             # AreaBuff - BlockedIncidentType also maps to BuffInfectableImmunity
             ("AreaBuff", "BlockedIncidentType"): "BuffInfectableImmunity",
             ("AreaBuff", "RadiusEffectRangeTarget"): "BuffEffectRadius",
+            ("AreaBuff", "RadiusEffectRange"): "BuffEffectRadius",
             # IrrigationUpgrade
             ("Irrigation", "PipeCapacity"): "BuffIrrigationCapacity",
             # ModuleOwnerUpgrade
@@ -1033,7 +1034,7 @@ class UITextCache:
             if product_name is None:
                 name_attr = product_asset.find("Standard.Name")
                 if name_attr:
-                    val = name_attr()  # pyright: ignore
+                    val = name_attr()
                     if isinstance(val, str):
                         product_name = val
 
@@ -1044,7 +1045,7 @@ class UITextCache:
             if value_attr is None:
                 return None
 
-            value = value_attr()  # pyright: ignore
+            value = value_attr()
             if not isinstance(value, int) or value == 0:
                 return None
 
@@ -1192,7 +1193,7 @@ class UITextCache:
                 amount_or_percent_attr = attr.find("AmountOrPercent") if hasattr(attr, "find") else None
                 if amount_or_percent_attr is not None:
                     # Standard case: attr has AmountOrPercent property
-                    val = amount_or_percent_attr()  # pyright: ignore
+                    val = amount_or_percent_attr()
                     if isinstance(val, float | int | str | None):
                         attr_value = val
                 elif hasattr(attr, "__call__"):
@@ -1287,7 +1288,7 @@ class UITextCache:
                 # Check if attr is a dict with UpgradePercent key
                 upgrade_percent_attr = attr.find("UpgradePercent")
                 if upgrade_percent_attr is not None:
-                    val = upgrade_percent_attr()  # pyright: ignore
+                    val = upgrade_percent_attr()
                     if isinstance(val, int | float):
                         attr_value = val
                 elif hasattr(attr, "__call__"):
@@ -1623,9 +1624,9 @@ class UITextCache:
 
                 value = None
                 if attr_name == "RadiusEffectRangeTarget":
-                    upgrade = list_attr.parent.RadiusEffectRangeUpgrade  # pyright: ignore
-                    if upgrade is not None:
-                        val = upgrade()  # pyright: ignore
+                    upgrade_attr = getattr(list_attr.parent, "RadiusEffectRangeUpgrade", None)
+                    if upgrade_attr is not None and hasattr(upgrade_attr, "__call__"):
+                        val = upgrade_attr()
                         if isinstance(val, int | float | str):
                             value = self._format_value(val, percental=True)
 

@@ -9,16 +9,45 @@ from io import BytesIO
 from pathlib import Path
 
 import lxml.etree as et
-from wand.image import Image as WandImage  # type: ignore
 
 from assetextractor.parsing.core.common import ElementCache, NamedElement, WeightedReference
-from assetextractor.parsing.core.texts import Text
+from assetextractor.parsing.core.texts import Text, parse_text_id
 
 logger = logging.getLogger("parsing")
 
-type AttributeParentT = (
-    Attribute[MetaPropertyCache, t.Any] | Property | ListItem | "NamedElement[MetaPropertyCache]" | None
-)
+
+class WandImageProto(t.Protocol):
+    width: int
+    height: int
+    format: str
+    compression_quality: int
+
+    def __init__(self, image: "WandImageProto | None" = None, filename: str | None = None) -> None: ...
+    def __enter__(self) -> "WandImageProto": ...
+    def __exit__(self, *args: object) -> None: ...
+    def resize(self, width: int, height: int) -> None: ...
+    def save(self, file: t.IO[bytes]) -> None: ...
+
+
+def _load_wand_image() -> type[WandImageProto]:
+    """Import wand.image.Image lazily.
+
+    Raises ImportError with installation guidance if Wand/ImageMagick is missing.
+    """
+    try:
+        from wand.image import Image as WandImage  # type: ignore[import-untyped]
+    except ImportError as e:
+        raise ImportError(
+            "Image processing requires the optional 'Wand' package and a working ImageMagick installation. "
+            "Install with: uv sync --extra images. "
+            "See README.md ('Optional: ImageMagick / Wand for image processing') for ImageMagick setup."
+        ) from e
+    return t.cast("type[WandImageProto]", WandImage)
+
+
+AttributeParentT: t.TypeAlias = t.Union[
+    "Attribute[MetaPropertyCache, t.Any]", "Property", "ListItem", "NamedElement[MetaPropertyCache]", None
+]
 
 if t.TYPE_CHECKING:
     from assetextractor.parsing.core.assets import Asset
@@ -430,8 +459,6 @@ class PrimitiveAttribute(Attribute["MetaPropertyCache", bool | str | float | int
         Returns:
             BuffUI object with icon, text, and formatted value, or None if not available
         """
-        from assetextractor.parsing.core.uitext import BuffUI
-
         if self.name == "RadiusEffectRangeUpgrade":
             return None  # handeled in RadiusEffectRangeTarget
 
@@ -446,38 +473,6 @@ class PrimitiveAttribute(Attribute["MetaPropertyCache", bool | str | float | int
         attr_name = self.name
 
         try:
-            # Special handling for (Area)FertilityPercent - use text/icon from Added(Area)Fertility
-            def get_added_fertility() -> "ReferenceAttribute | None":
-                # Safely retrieve AddedAreaFertility or AddedFertility from self.parent if present, else None
-                parent = getattr(self, "parent", None)
-                if parent is not None:
-                    if hasattr(parent, "AddedAreaFertility"):
-                        return getattr(parent, "AddedAreaFertility")
-                    if hasattr(parent, "AddedFertility"):
-                        return getattr(parent, "AddedFertility")
-                return None
-
-            if attr_name.endswith("FertilityPercent") and get_added_fertility() is not None:
-                added_fertility_attr = get_added_fertility()
-                if added_fertility_attr is not None and hasattr(added_fertility_attr, "__call__"):
-                    fertility_asset = added_fertility_attr()
-                    if fertility_asset is not None:
-                        # Get text and icon from the Fertility asset
-                        text_obj = fertility_asset.text if hasattr(fertility_asset, "text") else None
-                        icon_obj = None
-
-                        if hasattr(fertility_asset, "IconFilename"):
-                            icon_obj = fertility_asset.IconFilename
-                        elif hasattr(fertility_asset, "find"):
-                            icon_filename = fertility_asset.find("Standard.IconFilename")
-                            if icon_filename:
-                                icon_obj = icon_filename
-
-                        # Format value - check if it's percental
-                        value_str = f"{self.value}%"  # no sign
-
-                        return BuffUI(icon=icon_obj, text=text_obj, value=value_str)
-
             return self.cache.ui_text_cache.create_buff_ui(
                 property_name=property_name, attr_name=attr_name, value=self.value
             )
@@ -532,7 +527,14 @@ class TextAttribute(Attribute["MetaPropertyCache", Text]):
 
     def __init__(self, node: et._Element, parent: AttributeParentT, meta: ValueDefinition, cache: MetaPropertyCache):
         super().__init__(node, parent, meta, cache)
-        self.value = self.cache.texts.get(int(self._value_text)) if self._value_text else None
+        if self._value_text:
+            try:
+                self.value = self.cache.texts.get(parse_text_id(self._value_text))
+            except ValueError:
+                logger.warning("Cannot parse text ID %r at %s", self._value_text, self.full_path)
+                self.value = None
+        else:
+            self.value = None
 
     def __iter__(self) -> t.Iterator[str]:
         if self.value is None:
@@ -788,10 +790,15 @@ class FileNameAttribute(Attribute["MetaPropertyCache", Path]):
         # Fallback if no asset found
         return "icon_unknown"
 
-    def get_image(self) -> WandImage | None:
-        """Returns the image if the file is an image."""
+    def get_image(self) -> WandImageProto | None:
+        """Returns the image if the file is an image.
+
+        Raises ImportError if Wand/ImageMagick is not installed.
+        """
         if self.value is None or not self.is_image:
             return None
+
+        WandImage = _load_wand_image()  # noqa: N806
 
         try:
             filename = self.value
@@ -807,9 +814,14 @@ class FileNameAttribute(Attribute["MetaPropertyCache", Path]):
             return None
 
     def get_data_url(self, compression_quality: int | None = None, scaling: float = 0.25) -> str | None:
-        """Returns the data URL of the image if the file is an image."""
+        """Returns the data URL of the image if the file is an image.
+
+        Raises ImportError if Wand/ImageMagick is not installed.
+        """
         if compression_quality is not None and not (compression_quality > 0 and compression_quality <= 100):
             raise ValueError(f"Invalid compression quality {compression_quality} (0-100)")
+
+        WandImage = _load_wand_image()  # noqa: N806
 
         data = self.get_image()
         if data is None:
@@ -819,12 +831,12 @@ class FileNameAttribute(Attribute["MetaPropertyCache", Path]):
             with WandImage(data) as webp_img:
                 width = webp_img.width
                 height = webp_img.height
-                webp_img.resize(int(width * scaling), int(height * scaling))  # pyright: ignore[reportUnknownMemberType]
+                webp_img.resize(int(width * scaling), int(height * scaling))
                 webp_img.format = "webp"
                 if compression_quality is not None:
                     webp_img.compression_quality = compression_quality
                 buffer = BytesIO()
-                webp_img.save(file=buffer)  # type: ignore
+                webp_img.save(file=buffer)
                 base64_str = base64.b64encode(buffer.getvalue()).decode("utf-8")
                 return f"data:image/webp;base64,{base64_str}"
         except Exception as e:
@@ -855,7 +867,14 @@ class ReferenceAttribute(Attribute["MetaPropertyCache", "Asset"], Variable):
             self.value = None
         else:
             self.variable_name = None
-            self.guid = 0 if self._value_text is None else int(self._value_text)
+            if self._value_text is None:
+                self.guid = 0
+            else:
+                # Game data may include labels like "Province Egyptian Aegyptus - 149679"
+                text = self._value_text
+                if not text.lstrip("-").isdigit() and " - " in text:
+                    text = text.rsplit(" - ", 1)[-1]
+                self.guid = int(text)
             self.value = None  # is set in constructor of AssetCache
 
     def set_reference(self, source: Asset, target: Asset | None):
@@ -917,6 +936,48 @@ class ReferenceAttribute(Attribute["MetaPropertyCache", "Asset"], Variable):
                 f"Trying index access with {key} on the reference attribute {self.meta.full_path if self.is_default else self.full_path}"
             )
 
+    @property
+    def buff_ui(self):
+        """Get BuffUI representation for this reference attribute with formatted text.
+
+        Returns:
+            BuffUI object with icon and formatted text, or None if not applicable
+        """
+        from assetextractor.parsing.core.uitext import BuffUI
+
+        if self.value is None or not self.name.endswith(
+            "Fertility"
+        ):  # matches both AddedAreaFertility or AddedFertility
+            return None
+
+        parent = getattr(self, "parent", None)
+
+        # Get property path for buff type mapping
+        if parent is None:
+            return None
+
+        try:
+            percentage = parent.find_value("FertilityPercent")
+            if percentage is None:
+                percentage = parent.find_value("AreaFertilityPercent")
+
+            if percentage is None:
+                return None
+
+            fertility_asset = self.value
+
+            # Get text and icon from the Fertility asset
+            text_obj = fertility_asset.text
+            icon_obj = fertility_asset.icon
+
+            # Format value - check if it's percental
+            value_str = f"{percentage}%"  # no sign
+
+            return BuffUI(icon=icon_obj, text=text_obj, value=value_str)
+
+        except Exception:
+            return None
+
 
 class QuestAttribute(ReferenceAttribute):
     """References a quest asset and stores a boolean win_quest."""
@@ -932,31 +993,37 @@ class QuestAttribute(ReferenceAttribute):
             self.win_quest = None
 
 
-class ListItem:
+class ListItem(NamedElement[t.Any]):
     def __init__(self, index: int, node: et._Element, parent: ListAttribute | DictAttribute, cache: MetaPropertyCache):
-        self.index = index
-        self.node = node
-        self.parent = parent
-        self.cache = cache
-        self.super_index = self.get_super_index(self.node)
-        self.inherited = self.super_index is not None
-        self.value: dict[str, Attribute[ElementCache[t.Any, t.Any], t.Any] | None] = {}
-        self._full_path = None
-        self._property_path = None
+        super().__init__(node, parent, cache, name=str(index))
+        self.index: int = index
+        self.parent: ListAttribute | DictAttribute = parent  # pyright: ignore[reportIncompatibleVariableOverride]
+        self.cache: MetaPropertyCache = cache
+        self.super_index: int | None = self.get_super_index(self.node)
+        self.inherited: bool = self.super_index is not None
+        self.value: dict[str, Attribute[t.Any, t.Any] | Property | None] = {}
+        self._full_path: str | None = None
+        self._property_path: str | None = None
 
-        for value_definition in parent.meta.items:
-            name = value_definition.name
-            child = node.find(name)
+        meta = parent.meta
+        if meta and hasattr(meta, "items"):
+            for value_definition in meta.items:
+                name: str = value_definition.name
+                child = node.find(name)
 
-            if child is None:
-                attr = value_definition.default
-            else:
-                attr = AttributeFactory.create(child, self, value_definition, cache)
-                if attr.is_compound and not self.inherited:
-                    attr.resolve_inheritance(value_definition.default)
+                if child is None:
+                    attr = value_definition.default
+                else:
+                    attr = AttributeFactory.create(child, self, value_definition, cache)
+                    if attr.is_compound and not self.inherited:
+                        attr.resolve_inheritance(value_definition.default)
 
-            self.value[name] = attr
-            setattr(self, name, attr)
+                self.value[name] = attr
+                if name:
+                    setattr(self, name, attr)
+
+    def __call__(self) -> dict[str, Attribute[t.Any, t.Any] | Property | None]:
+        return self.value
 
     @staticmethod
     def get_super_index(node: et._Element) -> int | None:
@@ -970,19 +1037,23 @@ class ListItem:
         return None
 
     def resolve_inheritance(self, default: ListItem):
-        for value_definition in self.parent.meta.items:
-            name = value_definition.name
-            attribute = self.value[name]
-            default_attr = default.value[name]
+        meta = self.parent.meta
+        if meta and hasattr(meta, "items"):
+            for value_definition in meta.items:
+                name = value_definition.name
+                attribute = self.value.get(name)
+                default_attr = default.value.get(name)
 
-            if default_attr is None:
-                continue
+                if default_attr is None:
+                    continue
 
-            if attribute is None or attribute.is_default:
-                setattr(self, name, default_attr)
-                self.value[name] = default_attr
-            else:
-                attribute.resolve_inheritance(default_attr)
+                if attribute is None or (isinstance(attribute, Attribute) and attribute.is_default):
+                    setattr(self, name, default_attr)
+                    self.value[name] = default_attr
+                elif isinstance(attribute, Attribute) and isinstance(default_attr, Attribute):  # noqa: SIM114
+                    attribute.resolve_inheritance(default_attr)
+                elif isinstance(attribute, Property) and isinstance(default_attr, Property):
+                    attribute.resolve_inheritance(default_attr)
 
     @property
     def full_path(self) -> str:
@@ -1000,7 +1071,7 @@ class ListItem:
         """Returns the element with the given name or None if it does not exist."""
         if hasattr(self, "__getitem__"):
             try:
-                return self[name]  # type: ignore
+                return self[name]
             except (KeyError, IndexError, TypeError):
                 return None
         return None
@@ -1157,12 +1228,12 @@ class ListItem:
         """Allows the use of the 'in' keyword."""
         return key in self.value
 
-    def __iter__(self) -> t.Iterator[Attribute[ElementCache[t.Any, t.Any], t.Any]]:
+    def __iter__(self) -> t.Iterator[Attribute[t.Any, t.Any] | Property]:
         for attribute in self.value.values():
             if attribute is not None:
                 yield attribute
 
-    def __getitem__(self, key: int | str) -> str | Attribute[t.Any, t.Any] | None:
+    def __getitem__(self, key: int | str) -> Attribute[t.Any, t.Any] | Property | None:
         if isinstance(key, str):
             return self.value.get(key)
         else:

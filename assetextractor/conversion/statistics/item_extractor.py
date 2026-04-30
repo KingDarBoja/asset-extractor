@@ -39,6 +39,33 @@ class ItemExtractor:
         self.quest_tracker = QuestTracker(assets, self.texts)
         self.source_tracker = ItemSourceTracker(assets, self.texts, self.quest_tracker)
         self.boost_parser = BoostConditionParser(assets, self.texts)
+        self.dlc_label_map = self._build_dlc_label_map()
+
+    def _build_dlc_label_map(self) -> dict[int, str]:
+        """Map each DLC asset GUID to a short label like 'DLC01'.
+
+        Derives the label from the prefix of `Standard.ID` (e.g. 'DLC01_Prophecies_of_Ash'
+        -> 'DLC01'); falls back to the asset name when no ID is set.
+        """
+        labels: dict[int, str] = {}
+        uplay_template = self.assets.templates.get("UplayProduct")
+        if uplay_template is None:
+            return labels
+        for dlc in uplay_template.assets:
+            sid = dlc.find_value("Standard.ID")
+            if isinstance(sid, str) and sid:
+                labels[dlc.guid] = sid.split("_")[0]
+            else:
+                labels[dlc.guid] = dlc.name
+        return labels
+
+    def _get_version(self, asset: Asset) -> str:
+        """Return space-separated DLC labels that unlock this asset, or 'base'."""
+        unlocked_by = getattr(asset, "unlocked_by_dlcs", None)
+        if not unlocked_by:
+            return "base"
+        labels = sorted({self.dlc_label_map.get(guid, str(guid)) for guid in unlocked_by})
+        return " ".join(labels) if labels else "base"
 
     def extract_all_items(self) -> list[dict[str, str | int]]:
         """Extract all items from the asset cache.
@@ -72,6 +99,7 @@ class ItemExtractor:
                     item = {
                         "guid": asset.guid,
                         "name": get_localized_name(asset),
+                        "version": self._get_version(asset),
                         "niche": "",
                         "rarity": "",
                         "trade_price": "",
@@ -236,6 +264,7 @@ class ItemExtractor:
             fieldnames = [
                 "guid",
                 "name",
+                "version",
                 "niche",
                 "rarity",
                 "trade_price",
@@ -257,7 +286,7 @@ class ItemExtractor:
         Args:
             items: List of item dicts
         """
-        df = pd.DataFrame(items)  # type: ignore
+        df = pd.DataFrame(items)
 
         print("\n=== Item Statistics ===")
         print(f"Total items: {len(items)}")

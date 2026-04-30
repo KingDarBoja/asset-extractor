@@ -168,6 +168,12 @@ class TemplateCache(ElementCache[Template, TemplateGroup]):
         for group in self.properties.groups.values():
             self._process_property_group(group)
 
+        # Fallback: process any MetaProperties missed by _process_property_group due to
+        # duplicate group names (all-None <Name>) collapsing sibling groups into one slot.
+        # All MetaProperties are registered globally in properties.elements via cache.add().
+        for meta_property in self.properties.elements.values():
+            self._process_meta_property(meta_property)
+
         for template in self:
             self._process_template(template)
 

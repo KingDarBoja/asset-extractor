@@ -1,5 +1,6 @@
 """Boost condition parser for ItemWithBoost assets."""
 
+import typing as t
 from typing import Any, TypeVar
 
 from assetextractor.conversion.statistics.constants import COMPARISON_OPERATORS, SOURCE_TEXT_IDS
@@ -68,7 +69,11 @@ class BoostConditionParser:
         return zone_names, special_state_names
 
     @staticmethod
-    def find_val(obj: Asset | TemplateAttribute | DictAttribute | Property, path: str, value_type: type[T]) -> T | None:
+    def find_val[T](
+        obj: Asset | TemplateAttribute | DictAttribute | Property,
+        path: str,
+        value_type: type[T] | tuple[type[t.Any], ...],
+    ) -> T | None:
         """Find and return a value at the given path with strict typing.
 
         Args:
@@ -78,21 +83,13 @@ class BoostConditionParser:
 
         Returns:
             The value cast to value_type, or None if not found or wrong type
-
-        Example:
-            amount = self.find_val(condition, "ConditionObjectCount.Amount", float)
-            comparison_op = self.find_val(condition, "ConditionObjectCount.ComparisonOp", (int, str))
         """
         try:
             attr = obj.find(path)
             if isinstance(attr, Attribute):
                 value = attr()
-                # Handle tuple of types for union types like int | str
-                if isinstance(value_type, tuple):
-                    if isinstance(value, value_type):
-                        return value
-                elif isinstance(value, value_type):
-                    return value
+                if isinstance(value, value_type):
+                    return t.cast("T", value)
             return None
         except Exception:
             return None
@@ -190,7 +187,7 @@ class BoostConditionParser:
                     matcher: Asset | None = condition.find_ref("ObjectFilter.Matcher")
                     if matcher is not None:
                         ship_config = matcher.find("Matcher.Criterion.MatcherCriterionShipConfiguration")
-                        
+
                         if isinstance(ship_config, (TemplateAttribute, DictAttribute, Property)):
                             req_modules = self.find_val(ship_config, "RequiredModuleCount", int)
                             req_military = self.find_val(ship_config, "RequiredMilitaryModuleCount", int)
@@ -319,21 +316,24 @@ class BoostConditionParser:
         """Parse ConditionEmperorRelation with reputation zones and special states."""
         try:
             if hasattr(condition, "ConditionEmperorRelation"):
-                allowed_zones = self.find_val(condition, "ConditionEmperorRelation.AllowedZones", list)
-                allowed_special_states = self.find_val(
-                    condition, "ConditionEmperorRelation.AllowedSpecialStates", list
+                allowed_zones = t.cast(
+                    "t.Union[list[t.Any], str, None]",
+                    self.find_val(condition, "ConditionEmperorRelation.AllowedZones", (list, str)),
+                )
+                allowed_special_states = t.cast(
+                    "t.Union[list[t.Any], str, None]",
+                    self.find_val(condition, "ConditionEmperorRelation.AllowedSpecialStates", (list, str)),
                 )
 
                 parts: list[str] = []
 
                 # Handle AllowedZones
                 if allowed_zones is not None:
-                    zone_list: list[str]
+                    zone_list: list[str] = []
                     if isinstance(allowed_zones, str):
                         zone_list = [z.strip() for z in allowed_zones.split(";") if z.strip()]
                     else:
                         zone_list = [str(z) for z in allowed_zones if z]
-
 
                     zone_names: list[str] = []
                     for zone in zone_list:
@@ -347,12 +347,11 @@ class BoostConditionParser:
 
                 # Handle AllowedSpecialStates
                 if allowed_special_states is not None:
-                    state_list: list[str]
+                    state_list: list[str] = []
                     if isinstance(allowed_special_states, str):
                         state_list = [s.strip() for s in allowed_special_states.split(";") if s.strip()]
                     else:
                         state_list = [str(s) for s in allowed_special_states if s]
-
 
                     state_names: list[str] = []
                     for state in state_list:

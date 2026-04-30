@@ -65,7 +65,7 @@ def get_localized_name(asset: Asset) -> str:
     if asset.text is not None:
         return asset.text()
     # Fallback to internal name
-    return asset.name if asset.name is not None else f"Asset_{asset.guid}"
+    return asset.name or f"Asset_{asset.guid}"
 
 
 def get_source_display_name(source: Asset, texts: TextCache) -> Text | str:
@@ -100,7 +100,7 @@ def get_source_display_name(source: Asset, texts: TextCache) -> Text | str:
                     return text_obj
 
     # Fallback to internal name or GUID (as string)
-    return source.name if source.name is not None else f"Asset_{source.guid}"
+    return source.name or f"Asset_{source.guid}"
 
 
 def format_buff_ui(buff_ui: BuffUI) -> str:

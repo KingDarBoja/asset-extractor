@@ -126,7 +126,7 @@ class Converter:
         Returns:
             True if the asset is modular infrastructure
         """
-        if asset.name is None:
+        if not asset.name:
             return False
 
         name_lower = asset.name.lower()
@@ -284,8 +284,8 @@ class Converter:
         Returns:
             Tuple of (should_exclude, reason)
         """
-        # Check if name is None or empty
-        if asset.name is None or asset.name == "":
+        # Check if name is empty
+        if not asset.name:
             return (True, "Name is None or empty")
 
         # Convert name to lowercase for case-insensitive checks

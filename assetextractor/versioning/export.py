@@ -23,7 +23,7 @@ class AssetExportData:
     template: str | None
     version_added: int
     version_deleted: int | None
-    hashes: dict[int, str] = field(default_factory=dict)
+    hashes: dict[int, str] = field(default_factory=dict)  # pyright: ignore[reportUnknownVariableType]
 
 
 @dataclass
@@ -64,7 +64,7 @@ class AssetAllVersionsExport:
     template: str | None
     version_added: str
     version_deleted: str | None
-    history: list[AssetHistoryEntry] = field(default_factory=list)
+    history: list[AssetHistoryEntry] = field(default_factory=list)  # pyright: ignore[reportUnknownVariableType]
 
 
 def export_versions(
@@ -354,7 +354,7 @@ def export_all_versions_json(db: VersionDatabase, output_path: Path, template_fi
 
     result = {
         "versions": [asdict(v) for v in versions_list],
-        "assets": {guid: asdict(asset) for guid, asset in assets_dict.items()},
+        "assets": {str(guid): asdict(asset) for guid, asset in assets_dict.items()},
     }
 
     with output_path.open("w", encoding="utf-8") as f:

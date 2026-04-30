@@ -83,7 +83,7 @@ for /f "tokens=2 delims==" %%I in ('wmic os get localdatetime /value') do set da
 set DATE_STAMP=%datetime:~0,4%-%datetime:~4,2%-%datetime:~6,2%
 
 set ARCHIVE_NAME=assetbrowser-%DATE_STAMP%.7z
-set ASSETBROWSER_DIR=results\assetbrowser
+set ASSETBROWSER_DIR=..\assetbrowser
 
 echo Creating archive: %ARCHIVE_NAME%
 echo Source directory: %ASSETBROWSER_DIR%

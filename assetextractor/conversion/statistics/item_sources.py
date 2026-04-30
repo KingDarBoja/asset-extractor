@@ -2,12 +2,7 @@
 
 from assetextractor.conversion.statistics.constants import MAX_CONTRACT_SCORE
 from assetextractor.conversion.statistics.quest_tracking import QuestTracker
-from assetextractor.conversion.statistics.utils import (
-    SourceDict,
-    SourceInfo,
-    SourceType,
-    get_source_display_name,
-)
+from assetextractor.conversion.statistics.utils import SourceDict, SourceInfo, SourceType, get_source_display_name
 from assetextractor.parsing.core.assets import Asset, AssetCache
 from assetextractor.parsing.core.attributes import Attribute, ListAttribute
 from assetextractor.parsing.core.texts import TextCache
@@ -187,9 +182,7 @@ class ItemSourceTracker:
                 if quest is not None:
                     sources["quest"].append(
                         SourceDict(
-                            name=get_source_display_name(quest, self.texts),
-                            guid=quest.guid,
-                            sequence=source.guid,
+                            name=get_source_display_name(quest, self.texts), guid=quest.guid, sequence=source.guid
                         )
                     )
 
@@ -230,9 +223,7 @@ class ItemSourceTracker:
                     name = get_source_display_name(decision, self.texts) if decision is not None else None
 
                     already_added = any(
-                        s.get("decision_guid") == decision_guid
-                        for s in sources["colosseum"]
-                        if isinstance(s, dict)
+                        s.get("decision_guid") == decision_guid for s in sources["colosseum"] if isinstance(s, dict)
                     )
                     if not already_added:
                         sources["colosseum"].append(
@@ -246,9 +237,7 @@ class ItemSourceTracker:
                     # It's a quest decision. The decision asset itself is the source.
                     # Do not try to find a parent quest, as it can be incorrect for standalone decisions.
                     already_added = any(
-                        s.get("objective") == source.guid
-                        for s in sources["quest"]
-                        if isinstance(s, dict)
+                        s.get("objective") == source.guid for s in sources["quest"] if isinstance(s, dict)
                     )
                     if not already_added:
                         sources["quest"].append(
@@ -280,13 +269,13 @@ class ItemSourceTracker:
         for element in reward_list:
             min_range_attr = element.find("MinRange")
             max_range_attr = element.find("MaxRange")
-            
+
             if not isinstance(min_range_attr, Attribute) or not isinstance(max_range_attr, Attribute):
                 continue
 
             min_range = min_range_attr()
             max_range = max_range_attr()
-            
+
             if not isinstance(min_range, int | float) or not isinstance(max_range, int | float):
                 continue
 
@@ -314,14 +303,14 @@ class ItemSourceTracker:
             Tuple of (is_colosseum, parent_decision)
         """
         # Check if this decision has "Colosseum" in the name
-        if decision.name is not None and "Colosseum" in decision.name:
+        if "Colosseum" in decision.name:
             return True, decision
 
         # Check if this decision is referenced by a Colosseum decision
         if hasattr(decision, "referenced_by"):
             for parent_ref in decision.referenced_by.values():
                 parent = parent_ref.source
-                if parent.template.name == "Decision" and parent.name is not None and "Colosseum" in parent.name:
+                if parent.template.name == "Decision" and "Colosseum" in parent.name:
                     return True, parent
 
         return False, None
@@ -335,4 +324,4 @@ class ItemSourceTracker:
         Returns:
             True if this is a Hall of Fame item
         """
-        return asset.name is not None and "HallOfFame" in asset.name
+        return "HallOfFame" in asset.name

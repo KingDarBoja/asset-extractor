@@ -54,7 +54,7 @@ class RDAExtractor:
 
         for rda_file in self.main_data_path.glob("*.rda"):
             name = rda_file.stem.lower()
-            if name == "config" or name == "data33": # data33 is last rda file of Anno 1800
+            if name == "config" or name == "data33":  # data33 is last rda file of Anno 1800
                 rda_files["config"].append(rda_file)
             elif name == "ui":
                 rda_files["ui"].append(rda_file)

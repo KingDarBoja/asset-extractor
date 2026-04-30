@@ -14,6 +14,14 @@ if t.TYPE_CHECKING:
     from .attributes import Attribute
 
 
+def parse_text_id(text: str) -> int:
+    """Parse a text ID, supporting both decimal and hex (no prefix) formats."""
+    try:
+        return int(text)
+    except ValueError:
+        return int(text, 16)
+
+
 class Text(NamedElement["TextCache"]):
     """Represents all localized text versions with the same id from gui/texts_*.xml.
     Some texts contain html tags or placeholders for formatting. Use `has_html_escapes` and `count_format_args`. Note that `format` is not variadic but wants a list.
@@ -41,7 +49,7 @@ class Text(NamedElement["TextCache"]):
         if id_node is None or id_node.text is None:
             raise ValueError(f"Missing text id: {node.text}")
 
-        return int(id_node.text)
+        return parse_text_id(id_node.text)
 
     def has_html_escapes(self) -> bool:
         attr = "_has_HTML_escapes"

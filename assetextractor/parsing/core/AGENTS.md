@@ -52,8 +52,58 @@ This was verified by checking all items in the game: every item using `BuildingU
 
 **Pitfall**: When adding new `special_mappings` in `get_buff_type_name()`, always verify whether an attribute is exclusively used in one context. Attributes like `WorkforceModifier` look like a maintenance cost but are semantically different for residences.
 
+## Tech.Rewards.Unlocks — Reward Types
+
+`Tech.Rewards.Unlocks[i].UnlockReward` is a `ReferenceAttribute` that can point to different asset types — **not** exclusively `TechFeatureUnlock`:
+
+| Reward template | Meaning | Example |
+|----------------|---------|---------|
+| `TechFeatureUnlock` | Flag asset; enables BFS ConditionUnlocked chaining | 145339 "Tech Unlock ObsidianGathering" |
+| `AssetPool` / `AssetPoolNamed` | Pool of assets directly unlocked by the tech | 145234 "Asset Pool Roman Idols" → buildings [145229, ...] |
+| Other (Patron, Effect, etc.) | Mark as DLC; no BFS extension | 144800 Vulcan patron |
+
+**Pitfall**: Only add a reward to `fu_dlcs` (BFS state) if its template is `FeatureUnlock` or `TechFeatureUnlock`. Adding AssetPools to `fu_dlcs` is incorrect (they have no `Trigger.TriggerCondition`).
+
+## Patron Asset Structure
+
+`Patron` assets have two AssetPool-typed reference fields relevant to DLC tracking:
+
+- `Patron.Wonder` → `ReferenceAttribute` → `AssetPoolNamed` of wonder buildings
+- `Patron.Shrine` → `ReferenceAttribute` → `AssetPoolNamed` of shrine buildings
+
+Both pools are DLC-locked when the Patron itself is DLC-locked (e.g. Vulcan patron GUID 144800, unlocked via Tech DLC01 Patron Vulcan). Flatten with `AssetPool.AssetList[i].Asset`.
+
 ## Attribute Inheritance
 - **Strict Type Assumption**: The `resolve_inheritance` method in `Attribute` subclasses (in `attributes.py`) strictly assumes that the `default` parameter is an instance of the same subclass.
 - **Type Hinting**: Use `t.Self` for the `default` parameter to enforce this assumption.
 - **LSP Violation**: This pattern technically violates the Liskov Substitution Principle (LSP) by narrowing the input type of overridden methods.
 - **Pyright Suppression**: Always use `# pyright: ignore[reportIncompatibleMethodOverride]` on these methods to suppress static analysis errors, as the project architecture guarantees type compatibility at runtime.
+
+## Labeled GUID Values in assets.xml (post patch 1.4+)
+
+Some `ReferenceAttribute` values in `assets.xml` are no longer plain integers. They may include a human-readable label, e.g.:
+```
+Province Egyptian Aegyptus - 149679
+```
+**Fix** (`attributes.py:865`): When parsing `ReferenceAttribute`, if the value is not a plain integer and contains ` - `, split on the last ` - ` and parse the trailing part as the GUID. This is already handled in the code.
+
+## Unnamed Groups in properties-meta.xml Causing Missing Initializations
+
+`properties-meta.xml` has many `<Group>` elements with no `<Name>` (or `<Name>` with null text). In `PropertyGroup.__init__`, all such groups are stored under key `"None"` in `subgroups`, so only the LAST sibling group at each nesting level is retained. This affects up to 35 groups at one level.
+
+**Symptom**: `ValueError: AutoCreateAsset X [properties-meta:N] not initialized.` during `AssetCache.load()`.
+
+**Root cause**: A `DefaultContainerValues` entry sets `template_name` on a vector-item's `ValueDefinition.default` (a `TemplateAttribute`). Because the owning `MetaProperty` is in a group that was overwritten, `TemplateCache._process_property_group` never calls `_process_meta_property` for it, so `_process_default` is never called, leaving `_is_initialized = False`.
+
+**Fix** (`templates.py`, `TemplateCache.__init__`): After `_process_property_group`, also iterate `self.properties.elements.values()` (the global `MetaPropertyCache` registry, which contains all `MetaProperty` objects regardless of group hierarchy) and call `_process_meta_property` on each. The `_processed_defaults` set prevents double-processing.
+
+**Pattern**: This only triggers when a `DefaultContainerValues` entry sets a `template_name` on a vector item's default in an overwritten group. If no `DefaultContainerValues` applies, the default's `template_name` stays `None` and the early-return `if self.is_default and self.template_name is None: _is_initialized = True` handles it harmlessly.
+
+## Flags Data Type (Literals vs GUIDs)
+
+Attributes with the `Flags` data type (e.g., `Building.AssociatedRegions`, `Product.AssociatedRegion`) are parsed into a **`list[str]` of literals**, not GUIDs or integers.
+
+- **XML Format**: Semicolon-separated strings like `<AssociatedRegions>Meta;Moderate;Colony01;Arctic</AssociatedRegions>`.
+- **Python Representation**: `FlagsAttribute` parses these into a Python list: `['Meta', 'Moderate', 'Colony01', 'Arctic']`.
+- **Common Values**: Literals from the `Region` dataset, such as `'Roman'`, `'Meta'`, `'Moderate'`, `'Colony01'`, and `'Arctic'`.
+- **Pitfall**: When filtering by region, compare against these literal strings (e.g., `if 'Roman' in asset.Building.AssociatedRegions()`). Do not use GUIDs for comparison with `Flags` attributes.

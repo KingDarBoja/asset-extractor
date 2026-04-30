@@ -51,23 +51,20 @@ class NamedElement[CacheT: "ElementCache[t.Any, t.Any]"]:
 
     def __init__(self, node: et._Element, parent: NamedElement[CacheT] | None, cache: CacheT, name: str | None = None):
         self.cache: CacheT = cache
-        self.parent = parent
-        self.node = node
+        self.parent: NamedElement[CacheT] | None = parent
+        self.node: et._Element = node
         self.description: str | None = self.get_value("Description")
-        self._property_path = None
-        self._full_path = None
-        # self.instances: NamedElement = []
+        self._property_path: str | None = None
+        self._full_path: str | None = None
 
         if name is not None:
-            self.name = name
-        elif name is None:
-            name_node = node.find("Name")
-            if name_node is None:
-                raise AttributeMissingError(self, "Name")
-
-            self.name = str(name_node.text)
+            self.name: str = name
         else:
-            raise AttributeMissingError(self, "Name")
+            name_node = node.find("Name")
+            if name_node is not None and name_node.text is not None:
+                self.name: str = str(name_node.text)
+            else:
+                self.name: str = str(node.tag)
 
     @property
     def identifier(self) -> str:
@@ -163,17 +160,17 @@ class NamedElement[CacheT: "ElementCache[t.Any, t.Any]"]:
 
         return elem if i == len(parts) else None
 
-    def find_value[T: str](self, path: str, dtype: type[T] = str) -> T | None:
+    def find_value(self, path: str) -> t.Any | None:
         element = self.find(path)
+        if element is None:
+            return None
+        if callable(element):
+            return element()
+        return element.node.text if element.node.text is not None else None
 
-        if element is not None and element.node.text is not None:
-            try:
-                value = dtype(element.node.text)
-            except ValueError:
-                value = None
-        else:
-            value = None
-        return value
+    def __call__(self) -> t.Any:
+        """Returns the value of this element. Should be overridden by subclasses."""
+        return None
 
     def __contains__(self, key: str) -> bool:
         return False

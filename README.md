@@ -5,7 +5,7 @@ A modular python library (basically a set of scripts) to read the assets.xml, re
 ## Setup
 ### Simple Setup
 1. Clone this repository.
-    * Either download and unzip: https://github.com/anno-mods/asset-extractor/releases/download/1.0/asset-extractor.zip
+    * Either download and unzip: https://github.com/anno-mods/asset-extractor/releases/download/3.0/asset-extractor.zip
     * Or install [GitHub Desktop](https://desktop.github.com/download/) and inside GitHub desktop use the following link to clone the repository: https://github.com/anno-mods/asset-extractor.git
 2. Right click on `simple_setup.ps1` and click on `Run with PowerShell` in the context menu. In case the window immediately closes do the following:
     1. Right click on the file, click properties, and check `unblock` (skip this step if there is no such checkbox). Refer to the image for guidance:
@@ -20,8 +20,6 @@ A modular python library (basically a set of scripts) to read the assets.xml, re
    - Install .NET 6 Desktop Runtime (required for RDAConsole)
    - Download and extract RDAConsole from the latest GitHub release
    - Test that RDAConsole.exe runs correctly
-   - Install ImageMagick (required for Python Wand image processing)
-   - Set MAGICK_HOME environment variable
    - Create `config.json` from the template
    - Run initial RDA extraction from your game directory
 4. Visual Studio Code should open with `browsing.ipynb`. Follow the instructions in the notebook to get started.
@@ -61,15 +59,9 @@ A modular python library (basically a set of scripts) to read the assets.xml, re
    - Download the latest release from: https://github.com/anno-mods/RdaConsole/releases/latest
    - Extract to `./RDAConsole/` folder in the repository root
 
-4. Install ImageMagick (required for Python Wand):
-   - Download from: https://imagemagick.org/script/download.php#windows
-   - During installation, check all checkboxes (except Perl related)
-   - Set `MAGICK_HOME` environment variable to installation path (e.g., `C:\Program Files\ImageMagick-7.1.1-Q16-HDRI`)
-   - Verify installation by running `magick -version` in command prompt
+4. Check that `game_path` in `config.json` points to the installation directory of your Anno game. Make sure to use '/' or '\\\\' as path separators
 
-5. Check that `game_path` in `config.json` points to the installation directory of your Anno game. Make sure to use '/' or '\\\\' as path separators
-
-6. Extract RDA files by running:
+5. Extract RDA files by running:
    ```sh
    # Run the extraction script
    extract.cmd
@@ -81,14 +73,35 @@ A modular python library (basically a set of scripts) to read the assets.xml, re
    - Icon files from `ui.rda`
    - `.ifo` files from `graphics_*.rda` files
 
-7. **Important**: Run `extract.cmd` whenever there is a game update to refresh the extracted files.
+6. **Important**: Run `extract.cmd` whenever there is a game update to refresh the extracted files.
 
-8. Run the project:
+7. Run the project:
 
     ```sh
     # You can use 'uv run' to run files inside the venv if it's not activated
-    uv run main
+    # This will create an asset browser in `results/assetbrowser` (many files, 1 GB total size - be aware)
+    uv run python main.py
     ```
+
+### Optional: ImageMagick / Wand for image processing
+
+Image conversion (DDS to WebP via `FileNameAttribute.get_image()` / `get_data_url()`, used by the asset browser when embedding icons) requires the optional [Wand](https://docs.wand-py.org/) Python package and a working [ImageMagick](https://imagemagick.org/) installation. These are **not** installed by default — without them, image-related methods raise `ImportError` but the rest of the library works normally.
+
+1. Install ImageMagick:
+   - Download a Q8 build from: https://imagemagick.org/archive/binaries/
+     (look for `ImageMagick-*-Q8-x64-dll.exe`)
+   - Run the installer. During installation, check all checkboxes (except Perl-related).
+   - Set the `MAGICK_HOME` environment variable to the installation path
+     (e.g., `C:\Program Files\ImageMagick-7.1.1-Q8-x64`).
+   - Verify by running `magick -version` in a new command prompt.
+
+2. Install the Wand Python package into the project venv:
+   ```sh
+   uv sync --extra images
+   ```
+   (combine extras as needed, e.g., `uv sync --dev --extra jupyter --extra images`)
+
+3. Restart your terminal (and VS Code) so the `MAGICK_HOME` variable is picked up.
 
 ### Development
 

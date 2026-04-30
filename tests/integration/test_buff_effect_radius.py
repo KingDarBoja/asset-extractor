@@ -55,34 +55,14 @@ for idx, target_item in enumerate(target_list):
 
 print("✓ Asset structure is correct\n")
 
-# Test 3: RadiusEffectRangeUpgrade.buff_ui (PrimitiveAttribute)
+# Test 3: RadiusEffectRangeUpgrade.buff_ui is intentionally suppressed
+# (the merged BuffUI is rendered via RadiusEffectRangeTarget — see attributes.py:450)
 print("=" * 70)
-print("Test 3: RadiusEffectRangeUpgrade.buff_ui (PrimitiveAttribute)")
+print("Test 3: RadiusEffectRangeUpgrade.buff_ui is None (by design)")
 print("=" * 70)
 upgrade_ui = area_buff.RadiusEffectRangeUpgrade.buff_ui
-
-# Check that buff_ui is not None
-assert upgrade_ui is not None, "RadiusEffectRangeUpgrade.buff_ui should not be None"
-print(f"✓ buff_ui is not None")
-
-# Check value formatting (should be +25% because percental=True)
-print(f"\nBuffUI details:")
-print(f"  Icon: {upgrade_ui.icon}")
-print(f"  Text: {upgrade_ui.text}")
-print(f"  Value: {upgrade_ui.value}")
-print(f"  String representation: {upgrade_ui}")
-
-assert upgrade_ui.value == "+25%", f"Expected value '+25%', got '{upgrade_ui.value}'"
-print(f"✓ Value is correctly formatted as percentage: {upgrade_ui.value}")
-
-# Check text
-assert upgrade_ui.text is not None, "Text should not be None"
-text_str = str(upgrade_ui.text)
-print(f"✓ Text exists: {text_str}")
-
-# Check icon
-assert upgrade_ui.icon is not None, "Icon should not be None"
-print(f"✓ Icon exists: {upgrade_ui.icon}\n")
+assert upgrade_ui is None, f"Expected None (handled via RadiusEffectRangeTarget), got {upgrade_ui!r}"
+print("✓ buff_ui is None as expected\n")
 
 # Test 4: RadiusEffectRangeTarget.buff_ui (ListAttribute)
 print("=" * 70)

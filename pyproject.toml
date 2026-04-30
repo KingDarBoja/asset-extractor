@@ -12,9 +12,10 @@ description = "Asset extractor for Anno asset.xml files"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.13"
-dependencies = ["lxml>=5.3.1", "Jinja2>=3.1", "Wand>=0.6"]
+dependencies = ["lxml>=5.3.1", "Jinja2>=3.1"]
 
 [project.optional-dependencies]
+images = ["Wand>=0.6"]
 jupyter = [
     "pip>=25",
     "ipykernel>=6.29",

@@ -80,7 +80,7 @@ for guid in test_guids:
             buff_struct = buff_info["struct"]
             print(f"\n  Struct tree:")
             if hasattr(buff_struct, "print_tree"):
-                buff_struct.print_tree(indent=4)
+                buff_struct.print_tree(indent="    ")
 
             # Check if Text field exists
             text_attr = buff_struct.find("Text")
