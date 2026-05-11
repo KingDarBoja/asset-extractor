@@ -32,7 +32,9 @@ class OrnamentItemJSON(TypedDict):
     cost: int
     """Denarii value."""
     construction_group: ConstructionGroupJSON
-    """The construction group this ornament belongs to."""
+    """The immediate parent construction group this ornament belongs to."""
+    top_level_group: ConstructionGroupJSON
+    """The root construction group of the construction group."""
 
 
 AssetT = TypeVar("AssetT", bound="Asset")
@@ -51,8 +53,10 @@ class OrnamentsExtractor:
         self.assets = assets
         self.language = language
 
-        # This will store: { CategoryGUID: (CategoryMetadata, [Buildings]) }
-        self.category_map: Dict[str, tuple[ConstructionGroupJSON, List[OrnamentalBuilding]]] = {}
+        # Updated map to store: { TopGUID: (TopMetadata, [(Ornament, SubGroupMetadata)]) }
+        self.category_map: Dict[
+            str, tuple[ConstructionGroupJSON, List[tuple[OrnamentalBuilding, ConstructionGroupJSON]]]
+        ] = {}
 
     def _prepare_converter(self):
         """Ensures the shared cache is using this extractor's language."""
@@ -79,51 +83,90 @@ class OrnamentsExtractor:
         categories = self.get_typed_assets("ConstructionCategory", ConstructionCategory)
 
         for category in categories:
-            ornaments_in_group: List[OrnamentalBuilding] = []
+            # We will store pairs: (The Asset, The specific group it was found in)
+            ornaments_with_info: List[tuple[OrnamentalBuilding, ConstructionGroupJSON]] = []
+
+            top_group_info: ConstructionGroupJSON = {
+                "guid": str(category.guid),
+                "name": category.name,
+                "localized_name": category.localized_title,
+            }
 
             # 2. Process the buildings inside this category
-            # We use a helper to handle the recursive nesting (Categories inside Categories)
-            self._collect_ornaments_recursive(category.building_assets, ornaments_in_group)
+            # We use a helper to handle the recursive nesting (Categories inside Categories).
+            # Start recursion, passing the top-level info as the first 'current_group'
+            self._collect_ornaments_recursive(category.building_assets, ornaments_with_info, top_group_info)
 
-            if ornaments_in_group:
-                # Build the group metadata using the helper logic
-                group_info: ConstructionGroupJSON = {
-                    "guid": str(category.guid),
-                    "name": category.name,
-                    "localized_name": category.localized_title,
-                }
-                self.category_map[str(category.guid)] = (group_info, ornaments_in_group)
+            if ornaments_with_info:
+                self.category_map[str(category.guid)] = (top_group_info, ornaments_with_info)
 
-    def _collect_ornaments_recursive(self, assets: List[Asset], collection: List[OrnamentalBuilding]):
-        """Internal helper to walk down the building list tree."""
+    def _collect_ornaments_recursive(
+        self,
+        assets: List[Asset],
+        collection: List[tuple[OrnamentalBuilding, ConstructionGroupJSON]],
+        current_group: ConstructionGroupJSON,
+    ):
+        """Walks the tree, supporting multiple templates and capturing sub-groups."""
+        # Whitelist of templates that behave like ornaments
+        ornament_templates = {"OrnamentalBuilding", "PolygonObject"}
+
         for asset in assets:
             tpl_name = asset.template.name
 
-            if tpl_name == "OrnamentalBuilding":
-                # Specialize the generic Asset into an OrnamentalBuilding
-                collection.append(OrnamentalBuilding(asset.node, self.assets))
+            if tpl_name in ornament_templates:
+                # Specialize to OrnamentalBuilding (works for PolygonObject too
+                # since they share the same XML structure for Text/Icons)
+                ornament = OrnamentalBuilding(asset.node, self.assets)
+
+                # Store the ornament paired with its immediate parent group metadata
+                collection.append((ornament, current_group))
 
             elif tpl_name == "ConstructionCategory":
                 # If we find a sub-category, specialize it to access its building_assets
-                sub_category = ConstructionCategory(asset.node, self.assets)
-                self._collect_ornaments_recursive(sub_category.building_assets, collection)
+                sub_cat = ConstructionCategory(asset.node, self.assets)
+
+                # Create metadata for the sub-level
+                sub_group_info: ConstructionGroupJSON = {
+                    "guid": str(sub_cat.guid),
+                    "name": sub_cat.name,
+                    "localized_name": sub_cat.localized_title,
+                }
+
+                # Recursive call with the NEW sub-group as the parent
+                self._collect_ornaments_recursive(sub_cat.building_assets, collection, sub_group_info)
 
     def extract_all(self):
-        """Extract all the OrnamentalBuilding assets using the pre-mapped groups."""
-        # 1. Perform the mapping/grouping logic
+        """
+        Extract all ornament-like assets using the nested category mapping.
+        Handles both OrnamentalBuilding and PolygonObject.
+        """
+        # 1. Ensure the mapping is built
         self._map_construction_categories()
 
-        # 2. Iterate through the unpacked tuple: (group_info_dict, list_of_ornaments)
-        for group_guid, (group_info, ornaments) in self.category_map.items():
-            print(f"\nGroup: {group_info['localized_name']} (GUID: {group_guid})")
+        # 2. Iterate through the Top-Level Groups
+        # The map stores: { TopGUID: (TopMetadata, [(Ornament, SubGroupMetadata)]) }
+        for top_guid, (top_info, items) in self.category_map.items():
+            print(f"\n========================================")  # noqa: F541
+            print(f"TAB: {top_info['localized_name']} (GUID: {top_guid})")
+            print(f"========================================")  # noqa: F541
 
-            for ornament in ornaments:
-                print(f"  ---- {ornament.name} (GUID: {ornament.guid})")
+            for ornament, sub_info in items:
+                # Indicate if the item is in a sub-menu
+                group_prefix = f"[{sub_info['localized_name']}]" if sub_info["guid"] != top_guid else ""
 
-                # Safely access specialized properties
+                print(f"  ---- {group_prefix} {ornament.name} (GUID: {ornament.guid})")
+
+                # Handle localized strings
+                print(f"       Title: {ornament.localized_title}")
+
+                # Safely access properties (PolygonObjects will return 0/[])
                 if ornament.costs:
-                    denarii_cost = ornament.costs[0]
-                    print(f"        Cost: {denarii_cost} denarii")
+                    print(f"       Cost: {int(ornament.costs[0])} denarii")
+                else:
+                    print(f"       Cost: 0 denarii")  # noqa: F541
+
+                if ornament.prestige > 0:
+                    print(f"       Prestige: {ornament.prestige}")
 
     def to_json_dict(self) -> Dict[str, OrnamentItemJSON]:
         """
@@ -139,8 +182,8 @@ class OrnamentsExtractor:
 
         export_data: Dict[str, OrnamentItemJSON] = {}
 
-        for group_guid, (group_info, ornaments) in self.category_map.items():  # type: ignore
-            for ornament in ornaments:
+        for top_guid, (top_info, items) in self.category_map.items():  # type: ignore
+            for ornament, sub_info in items:
                 # Icon processing
                 icon_package = IconProcessor.get_icon_package(ornament)
 
@@ -157,7 +200,8 @@ class OrnamentsExtractor:
                     "image_url": icon_package["image_url"] or "",
                     "prestige": ornament.prestige,
                     "cost": int(cost_value),
-                    "construction_group": group_info,
+                    "construction_group": sub_info,  # Immediate Parent (e.g., 'Benches')
+                    "top_level_group": top_info,  # Root Parent (e.g., 'Classic')
                 }
                 export_data[guid_key] = json_item
 
