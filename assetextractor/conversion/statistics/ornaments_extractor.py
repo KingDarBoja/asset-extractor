@@ -181,9 +181,16 @@ class OrnamentsExtractor:
             self._map_construction_categories()
 
         export_data: Dict[str, OrnamentItemJSON] = {}
+        processed_guids: set[int] = set()  # Tracking set for de-duplication
 
         for top_guid, (top_info, items) in self.category_map.items():  # type: ignore
             for ornament, sub_info in items:
+                # SKIP if we have already exported this building
+                if ornament.guid in processed_guids:
+                    continue
+
+                processed_guids.add(ornament.guid)
+
                 # Icon processing
                 icon_package = IconProcessor.get_icon_package(ornament)
 
