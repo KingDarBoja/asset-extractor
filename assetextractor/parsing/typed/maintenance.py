@@ -23,7 +23,7 @@ class AssetWithMaintenance(Asset):
     def maintenance_costs(self) -> List[tuple[Asset, int]]:
         out: List[tuple[Asset, int]] = []
         for entry in cast("ListAttribute", self.find("Maintenance.Maintenances")):
-            product_asset = cast(Asset | None, entry.find_value("Product"))
+            product_asset = entry.find_ref("Product")
             amount = cast(int, entry.find_value("Amount") or 0)
             if product_asset is not None:
                 out.append((product_asset, amount))
@@ -31,7 +31,4 @@ class AssetWithMaintenance(Asset):
 
     @cached_property
     def formatted_maintenance_costs(self) -> List[Maintenance]:
-        return [
-            Maintenance(product=asset.text() if asset.text else asset.name, amount=amt)
-            for asset, amt in self.maintenance_costs
-        ]
+        return [Maintenance(product=asset.short_description, amount=amt) for asset, amt in self.maintenance_costs]

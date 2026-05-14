@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from typing import Dict, List, Type, TypedDict, TypeVar
+from typing import Dict, List, TypedDict
 
 from assetextractor.conversion.statistics.icon_processor import IconProcessor
 from assetextractor.parsing.typed.construction_category import ConstructionCategory
@@ -37,9 +37,6 @@ class OrnamentItemJSON(TypedDict):
     """The root construction group of the construction group."""
 
 
-AssetT = TypeVar("AssetT", bound="Asset")
-
-
 class OrnamentsExtractor:
     """Main orchestrator for extracting ornaments from Anno 117 assets."""
 
@@ -62,20 +59,13 @@ class OrnamentsExtractor:
         """Ensures the shared cache is using this extractor's language."""
         self.assets.texts.converter = StandardTextConverter(self.language)
 
-    def get_typed_assets(self, template_name: str, cls: Type[AssetT]) -> List[AssetT]:
-        """Return all assets for a template that are already typed as cls."""
-        template = self.assets.templates.get(template_name)
-        if template is None:
-            return []
-        return [a for a in template.assets if isinstance(a, cls)]
-
     def _map_construction_categories(self):
         """
         Traverses ConstructionCategories recursively to find and group
         all OrnamentalBuildings under their respective parent groups.
         """
-        # 1. Get all specialized top-level categories
-        categories = self.get_typed_assets("ConstructionCategory", ConstructionCategory)
+        template = self.assets.templates.get("ConstructionCategory")
+        categories = [a for a in template.assets if isinstance(a, ConstructionCategory)] if template else []
 
         for category in categories:
             # We will store pairs: (The Asset, The specific group it was found in)

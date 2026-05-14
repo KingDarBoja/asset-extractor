@@ -26,7 +26,7 @@ class AssetWithCosts(Asset):
     def costs(self) -> List[tuple[Asset, int]]:
         out: List[tuple[Asset, int]] = []
         for entry in cast("ListAttribute", self.find("Cost.Costs")):
-            cost_asset = cast(Asset | None, entry.find_value("Ingredient"))
+            cost_asset = entry.find_ref("Ingredient")
             amount = cast(int, entry.find_value("Amount") or 0)
             if cost_asset is not None:
                 out.append((cost_asset, amount))
@@ -34,7 +34,4 @@ class AssetWithCosts(Asset):
 
     @cached_property
     def formatted_costs(self) -> List[Cost]:
-        return [
-            Cost(ingredient=asset.text() if asset.text else asset.name, amount=amt)
-            for asset, amt in self.costs
-        ]
+        return [Cost(ingredient=asset.short_description, amount=amt) for asset, amt in self.costs]

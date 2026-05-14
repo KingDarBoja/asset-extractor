@@ -21,7 +21,7 @@ class AssetPoolBase(Asset):
     def asset_pool_list(self) -> List[Asset]:
         out: List[Asset] = []
         for entry in cast("ListAttribute", self.find(self.asset_list_path)):
-            asset = cast(Asset | None, entry.find_value("Asset"))
+            asset = entry.find_ref("Asset")
             if asset is not None:
                 out.append(asset)
         return out

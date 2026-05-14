@@ -194,15 +194,8 @@ class Asset(NamedElement["AssetCache"]):
         return True
 
     def find_ref(self, path: str) -> Asset | None:
-        """Follow path and return an asset if valid, is a reference, and exists.
-
-        Returns None otherwise.
-        """
-        elem = self.find(path)
-        if elem is None or not isinstance(elem, ReferenceAttribute):
-            return None
-
-        return elem()
+        """Follow path and return the referenced Asset, or None if missing or unresolved."""
+        return t.cast(Asset | None, self.find_value(path))
 
     @property
     def icon(self) -> FileNameAttribute | None:

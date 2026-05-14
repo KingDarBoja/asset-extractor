@@ -35,7 +35,7 @@ class Patron(Asset, template_names="Patron"):
         parsed_effects: List[LocalEffect] = []
 
         for effect_item in cast("ListAttribute", self.find("Patron.LocalEffects")):
-            effect_asset = cast(Effect | None, effect_item.find_value("GUID"))
+            effect_asset = cast(Effect | None, effect_item.find_ref("GUID"))
 
             milestones: List[Milestone] = [
                 Milestone(

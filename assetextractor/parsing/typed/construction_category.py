@@ -17,7 +17,7 @@ class ConstructionCategory(Asset, template_names="ConstructionCategory"):
     def building_assets(self) -> List[Asset]:
         out: List[Asset] = []
         for item in cast("ListAttribute", self.find("ConstructionCategory.BuildingList")):
-            asset = cast(Asset | None, item.find_value("Building"))
+            asset = item.find_ref("Building")
             if asset is not None:
                 out.append(asset)
         return out

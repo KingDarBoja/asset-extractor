@@ -19,7 +19,7 @@ class Effect(Asset, template_names="Effect"):
         allowed_template_names = {"BuildingBuff", "ShipBuff"}
         out: List[Asset] = []
         for entry in cast("ListAttribute", self.find("Effect.Buffs")):
-            buff = cast(Asset | None, entry.find_value("GUID"))
+            buff = entry.find_ref("GUID")
             if buff is not None and buff.template.name in allowed_template_names:
                 out.append(buff)
         return out
@@ -29,7 +29,7 @@ class Effect(Asset, template_names="Effect"):
         """Return the AssetPoolNamed targets whose members are affected by this effect."""
         out: List[AssetPoolNamed] = []
         for entry in cast("ListAttribute", self.find("Effect.Targets")):
-            target = cast(Asset | None, entry.find_value("GUID"))
+            target = entry.find_ref("GUID")
             if isinstance(target, AssetPoolNamed):
                 out.append(target)
         return out

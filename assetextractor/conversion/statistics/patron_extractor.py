@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from typing import Dict, List, Sequence, Type, TypedDict, TypeVar
+from typing import Dict, List, Sequence, TypedDict
 
 from assetextractor.parsing.typed.asset_pool_base import AssetPoolBase
 from assetextractor.parsing.typed.cost import AssetWithCosts
@@ -21,9 +21,6 @@ class PatronItemJSON(TypedDict):
     image_url: str
 
 
-AssetT = TypeVar("AssetT", bound="Asset")
-
-
 class PatronExtractor:
     """Main orchestrator for extracting patrons from Anno 117 assets."""
 
@@ -41,13 +38,6 @@ class PatronExtractor:
     def _prepare_converter(self):
         """Ensures the shared cache is using this extractor's language."""
         self.assets.texts.converter = StandardTextConverter(self.language)
-
-    def get_typed_assets(self, template_name: str, cls: Type[AssetT]) -> List[AssetT]:
-        """Return all assets for a template that are already typed as cls."""
-        template = self.assets.templates.get(template_name)
-        if template is None:
-            return []
-        return [a for a in template.assets if isinstance(a, cls)]
 
     def _process_buffs(self, buffs: List[Asset]):
         """Private method to process and print buff assets."""
@@ -101,8 +91,8 @@ class PatronExtractor:
         """
         self._prepare_converter()
 
-        # 1. Get all specialized patron assets.
-        patrons = self.get_typed_assets("Patron", Patron)
+        template = self.assets.templates.get("Patron")
+        patrons = [a for a in template.assets if isinstance(a, Patron)] if template else []
 
         for patron in patrons[:1]:  # Try with Mars only
             print(f"\n{'=' * 50}")
