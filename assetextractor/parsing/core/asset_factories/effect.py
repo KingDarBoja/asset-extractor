@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from functools import cached_property
-from typing import TYPE_CHECKING, List  # Postpones evaluation of annotations
+from typing import TYPE_CHECKING, Any, List  # Postpones evaluation of annotations
 
+from assetextractor.parsing.core.asset_factories.asset_pool_named import AssetPoolNamed
 from assetextractor.parsing.core.assets import Asset
 from assetextractor.parsing.core.attributes import ListAttribute, ReferenceAttribute
 
@@ -11,6 +12,7 @@ if TYPE_CHECKING:
     import lxml.etree as et
 
     from assetextractor.parsing.core.assets import AssetCache
+    from assetextractor.parsing.core.common import NamedElement
     from assetextractor.parsing.core.texts import Text
 
 
@@ -20,9 +22,9 @@ class Effect(Asset):
     def __init__(self, node: et._Element, cache: AssetCache):
         super().__init__(node, cache)
 
-    def _get_text_from_node(self, path: str, fallback: str) -> str:
+    def _get_text_from_node(self, elm: NamedElement[Any], path: str, fallback: str) -> str:
         """Helper to resolve a Text node path into a localized string."""
-        node = self.find(path)
+        node = elm.find(path)
 
         if node is not None:
             lang = self.cache.texts.converter.language
@@ -35,7 +37,7 @@ class Effect(Asset):
 
     @cached_property
     def buffs(self) -> List[Asset]:
-        """Return a list of Assets that can be either BuildingBuff, ShipBuff and so on."""
+        """Return a list of Assets that can be either 'BuildingBuff', 'ShipBuff' and so on."""
         allowed_template_names = {"BuildingBuff", "ShipBuff"}
         raw_buffs_list = self.find("Effect.Buffs")
 
@@ -49,15 +51,14 @@ class Effect(Asset):
                 # Get the referenced buff asset
                 buff_ref = buff_entry.find("GUID")
 
-                buff_asset: Effect | None
+                buff_asset: Asset | None = None
                 if isinstance(buff_ref, ReferenceAttribute):
-                    # Specialize the "LocalEffect" -> "GUID" referenced asset to "Effect".
                     buff_node = self.cache.get(buff_ref.guid)
                     if isinstance(buff_node, Asset):
-                        buff_asset = Effect(buff_node.node, self.cache)
+                        # TODO: Add the class for 'BuildingBuff' instantiation here.
+                        buff_asset = buff_node
 
-                # TODO: Add the class for BuildingBuff instance here.
-                if buff_asset and buff_asset.template.name in allowed_template_names:  # type: ignore
+                if buff_asset and buff_asset.template.name in allowed_template_names:
                     # print(
                     #     f"Processing Template: {buff_asset.template.name} for the buff {buff_asset.name} (GUID: {buff_asset.guid})"
                     # )
@@ -66,3 +67,41 @@ class Effect(Asset):
                     out_buffs.append(buff_asset)
 
         return out_buffs
+
+    @cached_property
+    def targets(self) -> List[Asset | AssetPoolNamed]:
+        """Return a list of Assets that can be 'AssetPoolNamed', so multiple entities are affected."""
+        allowed_template_names = {"AssetPoolNamed"}
+        raw_targets_list = self.find("Effect.Targets")
+
+        # Define the output targets list.
+        # TODO: Explicity provide the correct template classes here (AssetPoolNamed).
+        out_targets: List[Asset | AssetPoolNamed] = []
+
+        if isinstance(raw_targets_list, ListAttribute):
+            # print(f"This Effect has {len(raw_buffs_list)} targets.")
+            for target_entry in raw_targets_list:
+                # Get the referenced target asset
+                target_ref = target_entry.find("GUID")
+
+                target_asset: Asset | None = None
+                if isinstance(target_ref, ReferenceAttribute):
+                    target_node = self.cache.get(target_ref.guid)
+                    if isinstance(target_node, Asset):
+                        tpl_name = target_node.template.name
+                        match tpl_name:
+                            case "AssetPoolNamed":
+                                target_asset = AssetPoolNamed(target_node.node, self.cache)
+                            case _:
+                                # Generic asset assignment.
+                                target_asset = target_node
+
+                if target_asset and target_asset.template.name in allowed_template_names:
+                    # print(
+                    #     f"Processing Template: {target_asset.template.name} for the target {target_asset.name} (GUID: {target_asset.guid})"
+                    # )
+
+                    # Asign the buff asset to the output buff list.
+                    out_targets.append(target_asset)
+
+        return out_targets

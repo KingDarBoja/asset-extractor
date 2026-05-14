@@ -2,11 +2,10 @@ import json
 from pathlib import Path
 from typing import Dict, List, Type, TypedDict, TypeVar
 
+from assetextractor.parsing.core.asset_factories.asset_pool_named import AssetPoolNamed
 from assetextractor.parsing.core.asset_factories.patron import Patron
 from assetextractor.parsing.core.assets import Asset, AssetCache
-from assetextractor.parsing.core.attributes import Attribute
 from assetextractor.parsing.core.texts import StandardTextConverter
-from assetextractor.parsing.core.uitext import UITextCache
 
 
 class PatronItemJSON(TypedDict):
@@ -54,7 +53,10 @@ class PatronExtractor:
         return [cls(a.node, self.assets) for a in base_assets]
 
     def extract_all(self):
-        """Extract all patron assets using the helper asset factories."""
+        """
+        Extract all patron assets using the helper asset factories. Right now
+        it only prints.
+        """
         self._prepare_converter()
 
         # 1. Get all specialized patron assets.
@@ -72,26 +74,59 @@ class PatronExtractor:
                 if effect_data.asset:
                     print(f"Asset GUID:  {effect_data.asset.guid}")
 
+                    # Asign to helper const.
                     buffs = effect_data.asset.buffs
-                    for buff_index, buff_asset in enumerate(buffs):
-                        print(f"Buff {buff_index} - {buff_asset.name} (GUID: {buff_asset.guid})")
-                        source_cat_attr = buff_asset.find("Buff.SourceCategory")
+                    targets = effect_data.asset.targets
 
-                        # Get source category literal.
-                        if self.assets.properties.ui_text_cache and isinstance(source_cat_attr, Attribute):
-                            source_cat_literal = source_cat_attr()
-                            if not isinstance(source_cat_literal, str):
+                    # Separator.
+                    print(f"{'-' * 50}")
+                    print(f"Buffs: {len(targets)}")
+
+                    # Buffs processing
+                    for buff_index, buff_asset in enumerate(buffs, 1):
+                        print(f"  |- {buff_index} Buff - {buff_asset.name} (GUID: {buff_asset.guid})")
+                        match buff_asset:
+                            case _:
+                                # Default generic asset. Do nothing in the meantime.
                                 pass
 
-                            ui_cache = self.assets.properties.ui_text_cache
-                            source_cat_mapping = ui_cache.get_ui_text("BuffCategory", source_cat_literal)
-                            if source_cat_mapping is not None and source_cat_mapping.text is not None:
-                                source_cat_localized = source_cat_mapping.text()
-                                print(
-                                    f"Source Category Literal: {source_cat_literal} - Localized: {source_cat_localized}"
-                                )
-                            else:
-                                print(f"Source Category Literal: {source_cat_literal} - Localized: N/A")
+                        # source_cat_attr = buff_asset.find("Buff.SourceCategory")
+
+                        # # Get source category literal.
+                        # if self.assets.properties.ui_text_cache and isinstance(source_cat_attr, Attribute):
+                        #     source_cat_literal = source_cat_attr()
+                        #     if not isinstance(source_cat_literal, str):
+                        #         pass
+
+                        #     ui_cache = self.assets.properties.ui_text_cache
+                        #     source_cat_mapping = ui_cache.get_ui_text("BuffCategory", source_cat_literal)
+                        #     if source_cat_mapping is not None and source_cat_mapping.text is not None:
+                        #         source_cat_localized = source_cat_mapping.text()
+                        #         print(
+                        #             f"Source Category Literal: {source_cat_literal} - Localized: {source_cat_localized}"
+                        #         )
+                        #     else:
+                        #         print(f"Source Category Literal: {source_cat_literal} - Localized: N/A")
+
+                    # Separator.
+                    print(f"{'-' * 50}")
+                    print(f"Targets: {len(targets)}")
+
+                    # Targets Processing
+                    for target_index, target_asset in enumerate(targets, 1):
+                        print(f"  |- {target_index} Target - {target_asset.name} (GUID: {target_asset.guid})")
+                        match target_asset:
+                            case AssetPoolNamed():
+                                # Handle the asset pool here.
+                                for pool_index, pool_item in enumerate(target_asset.asset_pool_list, 1):
+                                    print(f"  * |- {pool_index} Pool Item: {pool_item.name} (GUID: {pool_item.guid})")
+
+                            case _:
+                                # Default generic asset. Do nothing in the meantime.
+                                pass
+
+                # Separator.
+                print(f"{'-' * 50}")
 
                 # Pretty print the Milestones list using asdict for clean JSON output
                 if effect_data.milestones:
