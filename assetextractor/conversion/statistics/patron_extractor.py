@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from typing import Dict, List, Type, TypedDict, TypeVar, Union
 
-from assetextractor.parsing.core.asset_factories.asset_pool_named import AssetPoolNamed
+from assetextractor.parsing.core.asset_factories.common.asset_pool_base import AssetPoolBase
 from assetextractor.parsing.core.asset_factories.patron import Patron
 from assetextractor.parsing.core.asset_factories.production_field import ProductionField
 from assetextractor.parsing.core.asset_factories.residence_building import ResidenceBuilding
@@ -67,7 +67,7 @@ class PatronExtractor:
                     pass
 
     def _process_targets(
-        self, targets: List[Union[Asset, AssetPoolNamed, ResidenceBuilding, ProductionField]], level: int = 0
+        self, targets: List[Union[Asset, AssetPoolBase, ResidenceBuilding, ProductionField]], level: int = 0
     ):
         """Private method to process and print target assets and asset pools recursively."""
         # Print the header only at the root level
@@ -83,10 +83,12 @@ class PatronExtractor:
             print(f"{indent}  |- {target_index} Target: {target_asset.name} (GUID: {target_asset.guid})")
 
             match target_asset:
-                case AssetPoolNamed():
+                # This covers both AssetPool and AssetPoolNamed!
+                case AssetPoolBase():
                     # Recurse into the sub-pool with an increased level
                     # This uses the property that returns a list of Assets/AssetPools
                     self._process_targets(target_asset.asset_pool_list, level + 1)
+                # Could be replaced with `AssetWithCost()` as well.
                 case ProductionField() | ResidenceBuilding() as building:
                     costs = building.formatted_costs
                     # Print formatted costs

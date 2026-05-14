@@ -3,8 +3,8 @@ from __future__ import annotations
 from assetextractor.parsing.core.asset_factories.common.asset_pool_base import AssetPoolBase
 
 
-class AssetPoolNamed(AssetPoolBase):
-    """Specialized Asset for 'AssetPoolNamed' with pre-computed data."""
+class AssetPool(AssetPoolBase):
+    """Specialized Asset for 'AssetPool' with pre-computed data."""
 
     @property
     def asset_list_path(self) -> str:
