@@ -147,8 +147,8 @@ class UITextCache:
             },
         },
         52456: {  # BuffConfig (if it exists)
-            "path": "BuffCategory",
-            "mappings": {"BuffCategoryType": "{}.Name"},
+            "path": "BuffConfig",
+            "mappings": {"BuffCategory": "BuffCategory.{}.Name"},
         },
     }
 
