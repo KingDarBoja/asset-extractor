@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, List  # Postpones evaluation of annotations
+from typing import TYPE_CHECKING, Any, List, Union  # Postpones evaluation of annotations
 
 from assetextractor.parsing.core.asset_factories.production_field import ProductionField
+from assetextractor.parsing.core.asset_factories.residence_building import ResidenceBuilding
 from assetextractor.parsing.core.assets import Asset
 from assetextractor.parsing.core.attributes import ListAttribute, ReferenceAttribute
 
@@ -36,19 +37,19 @@ class AssetPoolNamed(Asset):
         return fallback
 
     @cached_property
-    def asset_pool_list(self) -> List[Asset | ProductionField]:
+    def asset_pool_list(self) -> List[Union[Asset, AssetPoolNamed, ResidenceBuilding, ProductionField]]:
         """
         Return a list of Assets that can be either 'Production', 'LandUnit',
         other 'AssetPoolNamed' (subgroups) and so on.
         """
         raw_asset_list = self.find("AssetPool.AssetList")
-        out_asset_list: List[Asset | ProductionField] = []
+        out_asset_list: List[Union[Asset, ResidenceBuilding, ProductionField]] = []
 
         # print(f"|- Processing Asset Pool: {self.name} (GUID: {self.guid})...")
 
         if isinstance(raw_asset_list, ListAttribute):
             # print(f"|- Asset Pool has {len(raw_asset_list)} assets.")
-            for i, asset_entry in enumerate(raw_asset_list):  # type: ignore
+            for asset_entry in raw_asset_list:
                 # Get the referenced asset
                 linked_asset_ref = asset_entry.find("Asset")
 
@@ -63,6 +64,12 @@ class AssetPoolNamed(Asset):
                         match tpl_name:
                             case "Production Field":
                                 out_asset_list.append(ProductionField(linked_asset.node, self.cache))
+                            case "ResidenceBuilding":
+                                out_asset_list.append(ResidenceBuilding(linked_asset.node, self.cache))
+                            case "AssetPoolNamed":
+                                # Dynamically use self.__class__ to avoid circular imports at runtime
+                                pool_class = self.__class__
+                                out_asset_list.append(pool_class(linked_asset.node, self.cache))
                             case _:
                                 # Default generic asset.
                                 out_asset_list.append(linked_asset)

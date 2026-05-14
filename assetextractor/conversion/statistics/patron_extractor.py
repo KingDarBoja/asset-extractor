@@ -1,9 +1,11 @@
 import json
 from pathlib import Path
-from typing import Dict, List, Type, TypedDict, TypeVar
+from typing import Dict, List, Type, TypedDict, TypeVar, Union
 
 from assetextractor.parsing.core.asset_factories.asset_pool_named import AssetPoolNamed
 from assetextractor.parsing.core.asset_factories.patron import Patron
+from assetextractor.parsing.core.asset_factories.production_field import ProductionField
+from assetextractor.parsing.core.asset_factories.residence_building import ResidenceBuilding
 from assetextractor.parsing.core.assets import Asset, AssetCache
 from assetextractor.parsing.core.texts import StandardTextConverter
 
@@ -52,6 +54,48 @@ class PatronExtractor:
         # Re-wrap or cast them to the specialized class
         return [cls(a.node, self.assets) for a in base_assets]
 
+    def _process_buffs(self, buffs: List[Asset]):
+        """Private method to process and print buff assets."""
+        print(f"{'-' * 50}")
+        print(f"Buffs: {len(buffs)}")
+
+        for buff_index, buff_asset in enumerate(buffs, 1):
+            print(f"  |- {buff_index} Buff - {buff_asset.name} (GUID: {buff_asset.guid})")
+            match buff_asset:
+                case _:
+                    # Default generic asset. Do nothing in the meantime.
+                    pass
+
+    def _process_targets(
+        self, targets: List[Union[Asset, AssetPoolNamed, ResidenceBuilding, ProductionField]], level: int = 0
+    ):
+        """Private method to process and print target assets and asset pools recursively."""
+        # Print the header only at the root level
+        if level == 0:
+            print(f"{'-' * 50}")
+            print(f"Targets: {len(targets)}")
+
+        # Calculate indentation based on recursion depth
+        indent = "  " * level
+
+        for target_index, target_asset in enumerate(targets, 1):
+            # Print the current target with proper indentation
+            print(f"{indent}  |- {target_index} Target: {target_asset.name} (GUID: {target_asset.guid})")
+
+            match target_asset:
+                case AssetPoolNamed():
+                    # Recurse into the sub-pool with an increased level
+                    # This uses the property that returns a list of Assets/AssetPools
+                    self._process_targets(target_asset.asset_pool_list, level + 1)
+                case ProductionField() | ResidenceBuilding() as building:
+                    costs = building.formatted_costs
+                    # Print formatted costs
+                    cost_str = ", ".join([f"{c.amount} {c.ingredient}" for c in costs])
+                    print(f"{indent}     [Costs]: {cost_str}")
+                case _:
+                    # For other types (like generic Assets), just stop here
+                    pass
+
     def extract_all(self):
         """
         Extract all patron assets using the helper asset factories. Right now
@@ -74,56 +118,9 @@ class PatronExtractor:
                 if effect_data.asset:
                     print(f"Asset GUID:  {effect_data.asset.guid}")
 
-                    # Asign to helper const.
-                    buffs = effect_data.asset.buffs
-                    targets = effect_data.asset.targets
-
-                    # Separator.
-                    print(f"{'-' * 50}")
-                    print(f"Buffs: {len(targets)}")
-
-                    # Buffs processing
-                    for buff_index, buff_asset in enumerate(buffs, 1):
-                        print(f"  |- {buff_index} Buff - {buff_asset.name} (GUID: {buff_asset.guid})")
-                        match buff_asset:
-                            case _:
-                                # Default generic asset. Do nothing in the meantime.
-                                pass
-
-                        # source_cat_attr = buff_asset.find("Buff.SourceCategory")
-
-                        # # Get source category literal.
-                        # if self.assets.properties.ui_text_cache and isinstance(source_cat_attr, Attribute):
-                        #     source_cat_literal = source_cat_attr()
-                        #     if not isinstance(source_cat_literal, str):
-                        #         pass
-
-                        #     ui_cache = self.assets.properties.ui_text_cache
-                        #     source_cat_mapping = ui_cache.get_ui_text("BuffCategory", source_cat_literal)
-                        #     if source_cat_mapping is not None and source_cat_mapping.text is not None:
-                        #         source_cat_localized = source_cat_mapping.text()
-                        #         print(
-                        #             f"Source Category Literal: {source_cat_literal} - Localized: {source_cat_localized}"
-                        #         )
-                        #     else:
-                        #         print(f"Source Category Literal: {source_cat_literal} - Localized: N/A")
-
-                    # Separator.
-                    print(f"{'-' * 50}")
-                    print(f"Targets: {len(targets)}")
-
-                    # Targets Processing
-                    for target_index, target_asset in enumerate(targets, 1):
-                        print(f"  |- {target_index} Target - {target_asset.name} (GUID: {target_asset.guid})")
-                        match target_asset:
-                            case AssetPoolNamed():
-                                # Handle the asset pool here.
-                                for pool_index, pool_item in enumerate(target_asset.asset_pool_list, 1):
-                                    print(f"  * |- {pool_index} Pool Item: {pool_item.name} (GUID: {pool_item.guid})")
-
-                            case _:
-                                # Default generic asset. Do nothing in the meantime.
-                                pass
+                    # Process Buffs and Targets using private methods
+                    self._process_buffs(effect_data.asset.buffs)
+                    self._process_targets(effect_data.asset.targets)
 
                 # Separator.
                 print(f"{'-' * 50}")

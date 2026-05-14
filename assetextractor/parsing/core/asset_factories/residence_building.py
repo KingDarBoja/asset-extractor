@@ -13,8 +13,8 @@ if TYPE_CHECKING:
     from assetextractor.parsing.core.texts import Text
 
 
-class ProductionField(AssetWithCosts):
-    """Specialized Asset for 'Production Field' with pre-computed data."""
+class ResidenceBuilding(AssetWithCosts):
+    """Specialized Asset for 'ResidenceBuilding' with pre-computed data."""
 
     def __init__(self, node: et._Element, cache: AssetCache):
         super().__init__(node, cache)
