@@ -1,11 +1,11 @@
 import json
 from pathlib import Path
-from typing import Dict, List, Type, TypedDict, TypeVar, Union
+from typing import Dict, List, Type, TypeAlias, TypedDict, TypeVar, Union
 
 from assetextractor.parsing.core.asset_factories.common.asset_pool_base import AssetPoolBase
+from assetextractor.parsing.core.asset_factories.common.cost import AssetWithCosts
+from assetextractor.parsing.core.asset_factories.common.maintenance import AssetWithMaintenance
 from assetextractor.parsing.core.asset_factories.patron import Patron
-from assetextractor.parsing.core.asset_factories.production_field import ProductionField
-from assetextractor.parsing.core.asset_factories.residence_building import ResidenceBuilding
 from assetextractor.parsing.core.assets import Asset, AssetCache
 from assetextractor.parsing.core.texts import StandardTextConverter
 
@@ -22,6 +22,9 @@ class PatronItemJSON(TypedDict):
 
 
 AssetT = TypeVar("AssetT", bound="Asset")
+
+TargetAsset: TypeAlias = Union[AssetPoolBase, AssetWithCosts, Asset]
+"""Simple type alias to keep function signatures short."""
 
 
 class PatronExtractor:
@@ -66,9 +69,7 @@ class PatronExtractor:
                     # Default generic asset. Do nothing in the meantime.
                     pass
 
-    def _process_targets(
-        self, targets: List[Union[Asset, AssetPoolBase, ResidenceBuilding, ProductionField]], level: int = 0
-    ):
+    def _process_targets(self, targets: List[TargetAsset], level: int = 0):
         """Private method to process and print target assets and asset pools recursively."""
         # Print the header only at the root level
         if level == 0:
@@ -82,21 +83,24 @@ class PatronExtractor:
             # Print the current target with proper indentation
             print(f"{indent}  |- {target_index} Target: {target_asset.name} (GUID: {target_asset.guid})")
 
-            match target_asset:
-                # This covers both AssetPool and AssetPoolNamed!
-                case AssetPoolBase():
-                    # Recurse into the sub-pool with an increased level
-                    # This uses the property that returns a list of Assets/AssetPools
-                    self._process_targets(target_asset.asset_pool_list, level + 1)
-                # Could be replaced with `AssetWithCost()` as well.
-                case ProductionField() | ResidenceBuilding() as building:
-                    costs = building.formatted_costs
-                    # Print formatted costs
+            # 1. Handle Recursion First
+            if isinstance(target_asset, AssetPoolBase):
+                self._process_targets(target_asset.asset_pool_list, level + 1)
+                continue  # Move to next target in loop
+
+            # 2. Handle Construction Costs (Common to Buildings and Units)
+            if isinstance(target_asset, AssetWithCosts):
+                costs = target_asset.formatted_costs
+                if costs:
                     cost_str = ", ".join([f"{c.amount} {c.ingredient}" for c in costs])
                     print(f"{indent}     [Costs]: {cost_str}")
-                case _:
-                    # For other types (like generic Assets), just stop here
-                    pass
+
+            # 3. Handle Maintenance (Specific to Units/Ships)
+            if isinstance(target_asset, AssetWithMaintenance):
+                m_costs = target_asset.formatted_maintenance_costs
+                if m_costs:
+                    m_str = ", ".join([f"{m.amount} {m.product}" for m in m_costs])
+                    print(f"{indent}     [Maintenance]: {m_str}")
 
     def extract_all(self):
         """
@@ -108,7 +112,7 @@ class PatronExtractor:
         # 1. Get all specialized patron assets.
         patrons = self.get_typed_assets("Patron", Patron)
 
-        for patron in patrons:
+        for patron in patrons[:1]:  # Try with Mars only
             print(f"\n{'=' * 50}")
             print(f"PATRON: {patron.name} (GUID: {patron.guid})")
             print(f"{'=' * 50}")

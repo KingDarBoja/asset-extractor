@@ -47,7 +47,7 @@ class Effect(Asset):
 
         if isinstance(raw_buffs_list, ListAttribute):
             # print(f"This Effect has {len(raw_buffs_list)} buffs.")
-            for i, buff_entry in enumerate(raw_buffs_list):  # type: ignore
+            for buff_entry in raw_buffs_list:
                 # Get the referenced buff asset
                 buff_ref = buff_entry.find("GUID")
 

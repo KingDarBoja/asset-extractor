@@ -2,7 +2,9 @@ from dataclasses import dataclass
 from functools import cached_property
 from typing import List
 
-from assetextractor.parsing.core.assets import Asset
+import lxml.etree as et
+
+from assetextractor.parsing.core.assets import Asset, AssetCache
 from assetextractor.parsing.core.attributes import ListAttribute, PrimitiveAttribute, ReferenceAttribute
 
 
@@ -17,6 +19,11 @@ class Cost:
 
 class AssetWithCosts(Asset):
     """Base class for assets that contain a 'Cost.Costs' list."""
+
+    def __init__(self, node: et._Element, cache: AssetCache):
+        # This call is CRITICAL. Without it, self.template and self.cache
+        # will not exist on this object.
+        super().__init__(node, cache)
 
     @cached_property
     def costs(self) -> List[tuple[Asset, int]]:
