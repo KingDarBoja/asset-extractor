@@ -1,11 +1,11 @@
 import json
 from pathlib import Path
-from typing import Dict, List, Type, TypeAlias, TypedDict, TypeVar, Union
+from typing import Dict, List, Sequence, Type, TypedDict, TypeVar
 
-from assetextractor.parsing.core.asset_factories.common.asset_pool_base import AssetPoolBase
-from assetextractor.parsing.core.asset_factories.common.cost import AssetWithCosts
-from assetextractor.parsing.core.asset_factories.common.maintenance import AssetWithMaintenance
-from assetextractor.parsing.core.asset_factories.patron import Patron
+from assetextractor.parsing.typed.asset_pool_base import AssetPoolBase
+from assetextractor.parsing.typed.cost import AssetWithCosts
+from assetextractor.parsing.typed.maintenance import AssetWithMaintenance
+from assetextractor.parsing.typed.patron import Patron
 from assetextractor.parsing.core.assets import Asset, AssetCache
 from assetextractor.parsing.core.texts import StandardTextConverter
 
@@ -22,9 +22,6 @@ class PatronItemJSON(TypedDict):
 
 
 AssetT = TypeVar("AssetT", bound="Asset")
-
-TargetAsset: TypeAlias = Union[AssetPoolBase, AssetWithCosts, Asset]
-"""Simple type alias to keep function signatures short."""
 
 
 class PatronExtractor:
@@ -46,16 +43,11 @@ class PatronExtractor:
         self.assets.texts.converter = StandardTextConverter(self.language)
 
     def get_typed_assets(self, template_name: str, cls: Type[AssetT]) -> List[AssetT]:
-        """Helper to get assets and treat them as a specific subclass."""
+        """Return all assets for a template that are already typed as cls."""
         template = self.assets.templates.get(template_name)
-
         if template is None:
             return []
-
-        base_assets = template.assets
-
-        # Re-wrap or cast them to the specialized class
-        return [cls(a.node, self.assets) for a in base_assets]
+        return [a for a in template.assets if isinstance(a, cls)]
 
     def _process_buffs(self, buffs: List[Asset]):
         """Private method to process and print buff assets."""
@@ -69,7 +61,7 @@ class PatronExtractor:
                     # Default generic asset. Do nothing in the meantime.
                     pass
 
-    def _process_targets(self, targets: List[TargetAsset], level: int = 0):
+    def _process_targets(self, targets: Sequence[Asset], level: int = 0):
         """Private method to process and print target assets and asset pools recursively."""
         # Print the header only at the root level
         if level == 0:
