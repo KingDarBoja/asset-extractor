@@ -3,8 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Tuple, TypedDict
 
-from assetextractor.parsing.core.attributes import FileNameAttribute
-
 if TYPE_CHECKING:
     from assetextractor.parsing.core.assets import Asset
     from assetextractor.parsing.core.attributes import WandImageProto
@@ -52,7 +50,7 @@ class IconProcessor:
         preserves all subsequent folders like 'icon_content' or 'features'.
 
         Examples:
-            Input icon `.../.cache/data/ui/4k/base/icon_content/religion/icon.dds` 
+            Input icon `.../.cache/data/ui/4k/base/icon_content/religion/icon.dds`
             becomes `base/icon_content/religion/icon`
 
         Args:
@@ -93,7 +91,7 @@ class IconProcessor:
 
         Args:
             asset: The source Asset object to inspect.
-            include_image: If True, attempts to load the actual WandImageProto 
+            include_image: If True, attempts to load the actual WandImageProto
                 from the asset's icon property.
 
         Returns:
@@ -103,10 +101,9 @@ class IconProcessor:
         path_str = None
         name = None
 
-        icon_node = asset.find("Standard.IconFilename")
-        if icon_node and isinstance(icon_node, FileNameAttribute) and icon_node.value:
-            path_str = str(icon_node.value)
-            name = icon_node.value.stem
+        if asset.icon and asset.icon.value:
+            path_str = str(asset.icon.value)
+            name = asset.icon.value.stem
 
         img_obj: WandImageProto | None = None
         if include_image and asset.icon and path_str and Path(path_str).exists():
@@ -119,6 +116,51 @@ class IconProcessor:
             "path": path_str,
             "image_url": cls.clean_path(path_str),
         }
+
+    @classmethod
+    def save_image(
+        cls,
+        image: WandImageProto,
+        original_path: str,
+        output_base: Path | str,
+        quality: int = 80,
+        resize: Tuple[int, int] | None = (64, 64),
+        flatten: bool = True,
+        forced_filename: str | None = None,
+    ) -> Path | None:
+        """
+        Core logic to save any WandImageProto with mirroring and resizing.
+        Returns the Path to the saved file if successful.
+        """
+        base_dir = Path(output_base).resolve()
+
+        if flatten:
+            file_name = forced_filename or Path(original_path).stem
+            target_file = (base_dir / f"{file_name}").with_suffix(".webp")
+        else:
+            rel_path = cls.get_mirrored_path(original_path)
+            if not rel_path:
+                return None
+            target_file = (base_dir / rel_path).with_suffix(".webp")
+
+        target_file.parent.mkdir(parents=True, exist_ok=True)
+
+        try:
+            image.format = "webp"
+            image.compression_quality = quality
+            if resize:
+                image.resize(resize[0], resize[1])
+
+            image.save(filename=str(target_file))  # type: ignore
+
+            # Shows: [OK] -> icons/base/icon_content/religion/icon_mars.webp
+            display_path = target_file.relative_to(base_dir.parent)
+            print(f"  [OK] -> {display_path}")
+
+            return target_file
+        except Exception as e:
+            print(f"  [ERROR] Failed to save image {original_path}: {e}")
+            return None
 
     @classmethod
     def export_icons(
@@ -152,56 +194,32 @@ class IconProcessor:
             A dictionary containing statistics on 'exported', 'skipped', and
             'errors' counts.
         """
-        base_dir = Path(output_base).resolve()
-        base_dir.mkdir(parents=True, exist_ok=True)
-
         seen_paths: set[str] = set()
         stats: Dict[str, int] = {"exported": 0, "skipped": 0, "errors": 0}
 
         for asset in assets:
-            # 1. Get the icon package which already computes the canonical_name
             icon_data = cls.get_icon_package(asset, include_image=True)
-            original_path = icon_data["path"]
-            img = icon_data["image"]
-
-            if not original_path or original_path in seen_paths or img is None:
+            if not icon_data["path"] or not icon_data["image"] or icon_data["path"] in seen_paths:
                 stats["skipped"] += 1
                 continue
 
-            seen_paths.add(original_path)
+            fname = icon_data["canon_name"] if use_canonical_name else icon_data["name"]
 
-            # Determine target file path based on flatten toggle
-            # Use canonical_name if available, otherwise fallback to asset name
-            if flatten:
-                file_name = icon_data["canon_name"] or asset.name if use_canonical_name else icon_data["name"]
-                target_file = (base_dir / f"{file_name}").with_suffix(".webp")
-            else:
-                # Use the full mirrored path
-                rel_path = cls.get_mirrored_path(original_path)
-                target_file = (base_dir / f"{rel_path}").with_suffix(".webp")
+            result = cls.save_image(
+                image=icon_data["image"],
+                original_path=icon_data["path"],
+                output_base=output_base,
+                quality=quality,
+                resize=resize,
+                flatten=flatten,
+                forced_filename=fname,
+            )
 
-            target_file.parent.mkdir(parents=True, exist_ok=True)
-
-            # ----------------------------------------------------
-
-            try:
-                img.format = "webp"
-                img.compression_quality = quality
-                if resize:
-                    img.resize(resize[0], resize[1])
-
-                # Save to the flattened path
-                img.save(filename=str(target_file))  # type: ignore
+            if result:
                 stats["exported"] += 1
-
-                # Print relative to 'results' (two levels up from the file)
-                # This results in: [OK] PatronMars -> results/icons/patrons/icon_2d_deity_mars_0.webp
-                print(f"  [OK] {asset.name} -> {target_file.relative_to(base_dir.parent.parent.parent)}")
-
-            except Exception as e:
-                print(f"  [ERROR] Failed to save {asset.name}: {e}")
+                seen_paths.add(icon_data["path"])
+                # print(f"  [OK] {asset.name} -> {result.name}")
+            else:
                 stats["errors"] += 1
 
-        print("---")
-        print(f"Finished! Exported: {stats['exported']} | Skipped: {stats['skipped']}")
         return stats
