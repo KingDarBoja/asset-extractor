@@ -3,8 +3,8 @@ from __future__ import annotations
 from functools import cached_property
 from typing import TYPE_CHECKING, List, cast
 
-from assetextractor.parsing.typed.asset_pool_named import AssetPoolNamed
 from assetextractor.parsing.core.assets import Asset
+from assetextractor.parsing.typed.asset_pool_named import AssetPoolNamed
 
 if TYPE_CHECKING:
     from assetextractor.parsing.core.attributes import ListAttribute

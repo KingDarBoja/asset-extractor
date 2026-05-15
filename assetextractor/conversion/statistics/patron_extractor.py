@@ -91,7 +91,40 @@ class PatronExtractor:
     def _print_single_patron(self, patron: Patron):
         """Internal helper to print the full details of one patron."""
         print(f"\n{'=' * 60}")
-        print(f"PATRON: {patron.name} (GUID: {patron.guid})")
+        print(f"PATRON: {patron.name} (GUID: {patron.guid}) ".center(60))
+        print(f"{'=' * 60}")
+
+        # === Shrine Effect ===
+        shrine_eff = patron.shrine_effect
+        shrine_item = shrine_eff.shrines[0]  # Usually the roman one.
+        print(f"Shrine: {shrine_eff.name} (GUID: {shrine_eff.guid})")
+        print(f"{shrine_item.localized_description}")
+
+        print(f"{'-' * 60}")
+
+        # === Veneration Effect ===
+        veneration_eff = patron.veneration_effect
+        print(f"Veneration Effect: {veneration_eff.title} (GUID: {veneration_eff.asset.guid})")
+        print(f"{veneration_eff.description}")
+
+        print(f"{'-' * 60}")
+
+        # === Exaltation Effect ===
+        exaltation_eff = patron.exaltation_effects[0]  # Usually one item.
+        # exaltation_buff = exaltation_eff.asset.buffs[0]
+        # exaltation_target = exaltation_eff.asset.targets[0]
+
+        print(f"Exaltation Effect: {exaltation_eff.title} (GUID: {exaltation_eff.asset.guid})")
+        print(f"{exaltation_eff.description}")
+        # print(f"{exaltation_buff_desc}")
+        # print(f"{exaltation_target_desc}")
+
+        print(f"{'=' * 60}")
+
+        print(f"Portraits ")  # noqa: F541
+        print(f"- Big: {patron.portraits.big.name}")
+        print(f"- Small: {patron.portraits.small.name}")
+
         print(f"{'=' * 60}")
 
         for eff_index, effect_data in enumerate(patron.local_effects):
@@ -117,7 +150,7 @@ class PatronExtractor:
 
     def _print_buffs(self, buffs: List[Asset]):
         """Private method to process and print buff assets."""
-        print(f"{'-' * 50}")
+        print(f"{'-' * 60}")
         print(f"Buffs: {len(buffs)}")
 
         for buff_index, buff_asset in enumerate(buffs, 1):
@@ -131,7 +164,7 @@ class PatronExtractor:
         """Private method to process and print target assets and asset pools recursively."""
         # Print the header only at the root level
         if level == 0:
-            print(f"{'-' * 50}")
+            print(f"{'-' * 60}")
             print(f"Targets: {len(targets)}")
 
         # Calculate indentation based on recursion depth
@@ -184,7 +217,7 @@ class PatronExtractor:
             patron_description = cast("Text | None", patron.find_value("Patron.PatronDescription"))
 
             title = patron_title() if patron_title else "No Title"
-            description = patron_description() if patron_description else "No Title"
+            description = patron_description() if patron_description else "No Description"
 
             # 3. Construct the web-ready icon URL We use the canonical name +
             # .webp extension to match our export or default to the original
