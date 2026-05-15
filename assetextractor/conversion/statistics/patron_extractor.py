@@ -195,19 +195,22 @@ class PatronExtractor:
 
     # --- Export Methods ---
 
-    def to_json_dict(self, web_base_path: str | None = None) -> Dict[str, PatronItemJSON]:
+    def to_json_dict(self, web_base_path: str | None = None, flatten: bool = True) -> Dict[str, PatronItemJSON]:
         """
-        Processes the patron map into a flat JSON-ready dictionary
-        keyed by patron GUID.
+        Processes the patron map into a flat JSON-ready dictionary keyed by
+        patron GUID.
 
         Args:
-            web_base_path: The folder prefix used in the final URL.
+            web_base_path: Folder prefix (e.g. 'assets/icons/patrons').
+            flatten: If True, uses canon_name. If False, uses the full
+                mirrored relative path.
         """
         # Switch the shared cache to THIS extractor's language before processing
         self._prepare_converter()
 
         # TODO: Finish this.
         export_data: Dict[str, PatronItemJSON] = {}
+
         for guid, patron in self.patrons.items():
             # 1. Get the icon package for metadata
             patron_icon = IconProcessor.get_icon_package(patron)
@@ -219,16 +222,17 @@ class PatronExtractor:
             title = patron_title() if patron_title else "No Title"
             description = patron_description() if patron_description else "No Description"
 
-            # 3. Construct the web-ready icon URL We use the canonical name +
-            # .webp extension to match our export or default to the original
-            # game path.
-            if web_base_path:
-                # Custom flattened path (results/icons/patrons/filename.webp)
-                canon_icon = patron_icon["canon_name"] or patron.canonical_name
-                final_icon_url = f"{web_base_path}/{canon_icon}.webp".replace("\\", "/")
+            # 3. Dynamic URL Logic matching the export structure.
+            if flatten:
+                file_part = f"{patron_icon['canon_name'] or patron.canonical_name}.webp"
             else:
-                # Default to the "original" cleaned game path
-                final_icon_url = patron_icon["image_url"] or ""
+                # Use the mirrored path which now preserves icon_content/features/etc.
+                file_part = f"{IconProcessor.get_mirrored_path(patron_icon['path'])}.webp"
+
+            if web_base_path:
+                final_icon_url = f"{web_base_path}/{file_part}".replace("\\", "/")
+            else:
+                final_icon_url = file_part.replace("\\", "/")
 
             export_data[str(guid)] = {
                 "uid": patron.guid,
@@ -240,15 +244,17 @@ class PatronExtractor:
             }
         return export_data
 
-    def save_to_json(self, file_path: Path | str, web_base_path: str | None = None):
+    def save_to_json(self, file_path: Path | str, web_base_path: str | None = None, flatten: bool = True):
         """
         Helper to write the exported dictionary to a physical file.
 
         Args:
             file_path: Where to save the actual .json file.
             web_base_path: The URL prefix to use for images inside the JSON.
+            flatten: If True, uses canon_name. If False, uses the full
+                mirrored relative path.
         """
-        data = self.to_json_dict(web_base_path=web_base_path)
+        data = self.to_json_dict(web_base_path=web_base_path, flatten=flatten)
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=4)
-        print(f"Successfully exported {len(data)} ornaments to {file_path}")
+        print(f"Successfully exported {len(data)} patrons to {file_path}")
