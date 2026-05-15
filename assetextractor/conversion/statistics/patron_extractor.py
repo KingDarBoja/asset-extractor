@@ -10,6 +10,45 @@ from assetextractor.parsing.typed.cost import AssetWithCosts
 from assetextractor.parsing.typed.maintenance import AssetWithMaintenance
 from assetextractor.parsing.typed.patron import Patron
 
+# --- Helper JSON Structures ---
+
+
+class MilestoneJSON(TypedDict):
+    devotion: int
+    buff_scaling: int
+
+
+class LocalEffectJSON(TypedDict):
+    title: str
+    description: str
+    milestones: List[MilestoneJSON]
+
+
+class VenerationEffectJSON(TypedDict):
+    title: str
+    description: str
+
+
+class ShrineItemJSON(TypedDict):
+    guid: int
+    localized_description: str
+
+
+class ShrineEffectJSON(TypedDict):
+    title: str
+    guid: int
+    shrines: List[ShrineItemJSON]
+
+
+class ExaltationEffectJSON(TypedDict):
+    title: str
+    description: str
+
+
+class PortraitJSON(TypedDict):
+    big: str
+    small: str
+
 
 class PatronItemJSON(TypedDict):
     """Patron output JSON structure."""
@@ -26,6 +65,11 @@ class PatronItemJSON(TypedDict):
     """The original 2D asset icon url."""
     canon_icon_name: str
     """Canonical icon name."""
+    local_effects: List[LocalEffectJSON]
+    veneration_effect: VenerationEffectJSON
+    shrine_effect: ShrineEffectJSON
+    exaltation_effects: List[ExaltationEffectJSON]
+    portraits: PortraitJSON
 
 
 class PatronExtractor:
@@ -61,8 +105,12 @@ class PatronExtractor:
             self.patrons = {}
             return {}
 
-        # Save to self.patrons and return it
-        self.patrons = {a.guid: a for a in template.assets if isinstance(a, Patron)}
+        # Extract raw assets
+        raw_map = {a.guid: a for a in template.assets if isinstance(a, Patron)}
+
+        # Sort by GUID and re-insert into a new dict to lock the order
+        self.patrons = {guid: raw_map[guid] for guid in sorted(raw_map.keys())}
+
         return self.patrons
 
     # --- Printing Methods ---
@@ -211,36 +259,90 @@ class PatronExtractor:
         # TODO: Finish this.
         export_data: Dict[str, PatronItemJSON] = {}
 
+        # self.patrons is already sorted from extract_all()
         for guid, patron in self.patrons.items():
-            # 1. Get the icon package for metadata
+            # 1. Basic Metadata & Icons
+
+            # 1.A Get the icon package for metadata
             patron_icon = IconProcessor.get_icon_package(patron)
 
-            # 2. Extract localized text
+            # 1.B Extract localized text
             patron_title = cast("Text | None", patron.find_value("Patron.PatronName"))
             patron_description = cast("Text | None", patron.find_value("Patron.PatronDescription"))
 
             title = patron_title() if patron_title else "No Title"
             description = patron_description() if patron_description else "No Description"
 
-            # 3. Dynamic URL Logic matching the export structure.
-            if flatten:
-                file_part = f"{patron_icon['canon_name'] or patron.canonical_name}.webp"
-            else:
-                # Use the mirrored path which now preserves icon_content/features/etc.
-                file_part = f"{IconProcessor.get_mirrored_path(patron_icon['path'])}.webp"
+            # 1.C. Dynamic URL Logic matching the export structure.
+            def _get_final_url(raw_path: str | None, canon_name: str | None) -> str:
+                if not raw_path:
+                    return ""
 
-            if web_base_path:
-                final_icon_url = f"{web_base_path}/{file_part}".replace("\\", "/")
-            else:
-                final_icon_url = file_part.replace("\\", "/")
+                # Determine the filename/path part (matches save_image logic).
+                if flatten:
+                    file_part = f"{canon_name or patron.canonical_name}.webp"
+                else:
+                    # Use the mirrored path which preserves icon_content/features/etc
+                    file_part = f"{IconProcessor.get_mirrored_path(raw_path)}.webp"
+
+                final_url = f"{web_base_path}/{file_part}" if web_base_path else file_part
+                return final_url.replace("\\", "/")
+
+            # if flatten:
+            #     file_part = f"{patron_icon['canon_name'] or patron.canonical_name}.webp"
+            # else:
+            #     # Use the mirrored path which now preserves icon_content/features/etc.
+            #     file_part = f"{IconProcessor.get_mirrored_path(patron_icon['path'])}.webp"
+
+            # final_icon_url = f"{web_base_path}/{file_part}" if web_base_path else file_part
+            # final_icon_url = final_icon_url.replace("\\", "/")
+
+            # 2. Local Effects & Milestones
+            local_effects_json: List[LocalEffectJSON] = [
+                {
+                    "title": e.title,
+                    "description": e.description,
+                    "milestones": [{"devotion": m.devotion, "buff_scaling": m.buff_scaling} for m in e.milestones],
+                }
+                for e in patron.local_effects
+            ]
+
+            # 3. Veneration Effect
+            veneration = patron.veneration_effect
+            veneration_json: VenerationEffectJSON = {"title": veneration.title, "description": veneration.description}
+
+            # 4. Shrine Effect
+            shrine = patron.shrine_effect
+            shrine_json: ShrineEffectJSON = {
+                "title": shrine.name,
+                "guid": shrine.guid,
+                "shrines": [{"guid": s.guid, "localized_description": s.localized_description} for s in shrine.shrines],
+            }
+
+            # 5. Exaltation Effects
+            exaltation_json: List[ExaltationEffectJSON] = [
+                {"title": e.title, "description": e.description} for e in patron.exaltation_effects
+            ]
+
+            # 6. Portraits
+            portraits_json: PortraitJSON = {
+                "big": _get_final_url(patron.portraits.big.path, patron.portraits.big.name),
+                "small": _get_final_url(patron.portraits.small.path, patron.portraits.small.name),
+            }
 
             export_data[str(guid)] = {
                 "uid": patron.guid,
                 "canon_name": patron.canonical_name,
                 "title": title,
                 "description": description,
-                "icon_url": final_icon_url,
+                # "icon_url": final_icon_url,
+                "icon_url": _get_final_url(patron_icon["path"], patron_icon["canon_name"]),
                 "canon_icon_name": patron_icon["canon_name"] or "",
+                "local_effects": local_effects_json,
+                "veneration_effect": veneration_json,
+                "shrine_effect": shrine_json,
+                "exaltation_effects": exaltation_json,
+                "portraits": portraits_json,
             }
         return export_data
 
@@ -258,3 +360,61 @@ class PatronExtractor:
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=4)
         print(f"Successfully exported {len(data)} patrons to {file_path}")
+
+    def export_all_patron_assets(self, output_base: Path | str, quality: int = 75, flatten: bool = False):
+        """
+        Exports all patron-related assets.
+        - Patron/Shrine/Effect Icons: 128x128.
+        - Big Portraits: 2496px -> 512x512.
+        - Small Portraits: 704px -> 128x128.
+        """
+        output_path = Path(output_base)
+        standard_assets: List[Asset] = []
+
+        for patron in self.patrons.values():
+            # 1. Main Patron Icon
+            standard_assets.append(patron)
+
+            # 2. Sub-Assets (Veneration, Shrines, Exaltation)
+            standard_assets.append(patron.veneration_effect.asset)
+            standard_assets.extend(patron.shrine_effect.shrines)
+            for exalt in patron.exaltation_effects:
+                standard_assets.append(exalt.asset)
+
+        # Batch export all standard icons at 128x128
+        print(f"Exporting {len(standard_assets)} standard icons (128x128)...")
+        IconProcessor.export_icons(
+            assets=standard_assets,
+            output_base=output_path,
+            flatten=flatten,
+            quality=quality,
+            resize=(128, 128),
+            use_canonical_name=True,
+        )
+
+        # 3. Specialized Portrait Export (Directly via save_image)
+        print("Exporting and resizing specialized portraits...")
+        for patron in self.patrons.values():
+            p = patron.portraits
+
+            # Big Portrait (512x512)
+            if p.big.path and p.big.image:
+                IconProcessor.save_image(
+                    image=p.big.image,
+                    original_path=p.big.path,
+                    output_base=output_path,
+                    quality=quality,
+                    resize=(512, 512),
+                    flatten=flatten,
+                )
+
+            # Small Portrait (128x128)
+            if p.small.path and p.small.image:
+                IconProcessor.save_image(
+                    image=p.small.image,
+                    original_path=p.small.path,
+                    output_base=output_path,
+                    quality=quality,
+                    resize=(128, 128),
+                    flatten=flatten,
+                )

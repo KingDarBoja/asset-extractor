@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import cached_property
+from pathlib import Path
 from typing import TYPE_CHECKING, List, cast
 
 from assetextractor.parsing.core.assets import Asset
+from assetextractor.parsing.core.attributes import FileNameAttribute, WandImageProto
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from assetextractor.parsing.core.attributes import ListAttribute
     from assetextractor.parsing.core.texts import Text
     from assetextractor.parsing.typed.asset_pool_named import AssetPoolNamed
@@ -34,6 +34,7 @@ class LocalEffect:
 class PatronIcon:
     path: str | None
     name: str | None
+    image: WandImageProto | None
 
 
 @dataclass(frozen=True)
@@ -97,7 +98,19 @@ class Patron(Asset, template_names="Patron"):
 
         def _make_icon(key: str) -> PatronIcon:
             val = cast("Path | None", self.find_value(key))
-            return PatronIcon(path=str(val) if val is not None else None, name=val.stem if val is not None else None)
+            icon_node = cast("FileNameAttribute | None", self.find(key))
+
+            path_str = str(val) if val is not None else None
+            img_obj = (
+                icon_node.get_image()
+                if isinstance(icon_node, FileNameAttribute)
+                and icon_node.is_image
+                and path_str
+                and Path(path_str).exists()
+                else None
+            )
+
+            return PatronIcon(path=path_str, name=val.stem if val is not None else None, image=img_obj)
 
         return PatronPortraits(
             big=_make_icon("Patron.PortraitBig"),
