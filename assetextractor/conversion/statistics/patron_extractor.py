@@ -1,4 +1,5 @@
 import json
+from functools import cached_property
 from pathlib import Path
 from typing import Dict, List, Sequence, TypedDict, cast
 
@@ -117,6 +118,47 @@ class PatronExtractor:
         self.patrons = {guid: raw_map[guid] for guid in sorted(raw_map.keys())}
 
         return self.patrons
+
+    @cached_property
+    def production_chains_by_target(self) -> Dict[int, List[Asset]]:
+        """
+        Pre-processes target assets from extracted patrons and maps each target's
+        GUID to a list of unique referencing ProductionChain assets.
+        """
+        mapping: Dict[int, Dict[int, Asset]] = {}
+
+        def _process_asset(asset: Asset):
+            if asset.guid in mapping:
+                return
+            mapping[asset.guid] = {}
+
+            # Trace references to look up ProductionChain templates
+            referenced_by = getattr(asset, "referenced_by", None)
+            if referenced_by:
+                for ref in referenced_by.values():
+                    source = getattr(ref, "source", None)
+                    if source:
+                        template = getattr(source, "template", None)
+                        if template and getattr(template, "name", None) == "ProductionChain":
+                            mapping[asset.guid][source.guid] = source
+
+            # Handle structural nested asset pools recursively
+            if isinstance(asset, AssetPoolBase):
+                for sub_asset in asset.asset_pool_list:
+                    _process_asset(sub_asset)
+
+        # Crawl all local and global/exaltation targets across available patrons
+        for patron in self.patrons.values():
+            for effect in patron.local_effects:
+                if effect.asset and hasattr(effect.asset, "targets"):
+                    for target in effect.asset.targets:
+                        _process_asset(target)
+            for exalt in patron.exaltation_effects:
+                if exalt.asset and hasattr(exalt.asset, "targets"):
+                    for target in exalt.asset.targets:
+                        _process_asset(target)
+
+        return {tgt_guid: list(chains.values()) for tgt_guid, chains in mapping.items()}
 
     # --- Printing Methods ---
 
@@ -253,6 +295,14 @@ class PatronExtractor:
             if isinstance(target_asset, AssetWithBuilding):
                 build_cat_name = target_asset.building_info.category_name
                 print(f"{indent}     |- [Category Name]: {build_cat_name}")
+
+            # 5. Handle Associated Production Chains Mapping Lookup
+            chains = self.production_chains_by_target.get(target_asset.guid, [])
+            for chain in chains:
+                chain_text = "N/A"
+                if hasattr(chain, "text") and chain.text:
+                    chain_text = chain.text() if callable(chain.text) else str(chain.text)
+                print(f"{indent}     |- [Production Chain]: {chain.name} (GUID: {chain.guid}) - {chain_text}")
 
     # --- Export Methods ---
 

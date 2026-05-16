@@ -4,14 +4,14 @@ from functools import cached_property
 from typing import TYPE_CHECKING, List, cast
 
 from assetextractor.parsing.core.assets import Asset
-from assetextractor.parsing.core.texts import Text
 
 if TYPE_CHECKING:
     from assetextractor.parsing.core.attributes import ListAttribute
+    from assetextractor.parsing.core.texts import Text
 
 
 class ConstructionCategory(Asset, template_names="ConstructionCategory"):
-    """Specialized Asset for Construction Category with pre-computed data."""
+    """Specialized Asset for 'ConstructionCategory' with pre-computed data."""
 
     @cached_property
     def building_assets(self) -> List[Asset]:
@@ -24,5 +24,5 @@ class ConstructionCategory(Asset, template_names="ConstructionCategory"):
 
     @cached_property
     def localized_title(self) -> str:
-        text = cast(Text | None, self.find_value("Text.OasisId"))
+        text = cast("Text | None", self.find_value("Text.OasisId"))
         return text() if text else "No Title"
