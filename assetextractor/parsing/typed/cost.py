@@ -27,7 +27,7 @@ class AssetWithCosts(Asset):
         out: List[tuple[Asset, int]] = []
         for entry in cast("ListAttribute", self.find("Cost.Costs")):
             cost_asset = entry.find_ref("Ingredient")
-            amount = cast(int, entry.find_value("Amount") or 0)
+            amount = cast("int", entry.find_value("Amount") or 0)
             if cost_asset is not None:
                 out.append((cost_asset, amount))
         return out

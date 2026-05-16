@@ -6,6 +6,7 @@ from assetextractor.conversion.statistics.icon_processor import IconProcessor
 from assetextractor.parsing.core.assets import Asset, AssetCache
 from assetextractor.parsing.core.texts import StandardTextConverter, Text
 from assetextractor.parsing.typed.asset_pool_base import AssetPoolBase
+from assetextractor.parsing.typed.building import AssetWithBuilding
 from assetextractor.parsing.typed.cost import AssetWithCosts
 from assetextractor.parsing.typed.maintenance import AssetWithMaintenance
 from assetextractor.parsing.typed.patron import Patron
@@ -75,6 +76,9 @@ class PatronItemJSON(TypedDict):
 class PatronExtractor:
     """Main orchestrator for extracting patrons from Anno 117 assets."""
 
+    # Dynamic format variable controlling visual separation lines globally
+    DEFAULT_PRINT_WIDTH = 100
+
     def __init__(self, assets: AssetCache, language: str = "english"):
         """Initialize the patrons extractor.
 
@@ -86,6 +90,7 @@ class PatronExtractor:
         self.language = language
         self.texts = assets.texts
         self.patrons: Dict[int, Patron] = {}  # Stores results after extract_all()
+        self.print_width = self.DEFAULT_PRINT_WIDTH
 
     def _prepare_converter(self):
         """Ensures the shared cache is using this extractor's language."""
@@ -138,9 +143,9 @@ class PatronExtractor:
 
     def _print_single_patron(self, patron: Patron):
         """Internal helper to print the full details of one patron."""
-        print(f"\n{'=' * 60}")
-        print(f"PATRON: {patron.name} (GUID: {patron.guid}) ".center(60))
-        print(f"{'=' * 60}")
+        print(f"\n{'=' * self.print_width}")
+        print(f"PATRON: {patron.name} (GUID: {patron.guid}) ".center(self.print_width))
+        print(f"{'=' * self.print_width}")
 
         # === Shrine Effect ===
         shrine_eff = patron.shrine_effect
@@ -148,14 +153,14 @@ class PatronExtractor:
         print(f"Shrine: {shrine_eff.name} (GUID: {shrine_eff.guid})")
         print(f"{shrine_item.localized_description}")
 
-        print(f"{'-' * 60}")
+        print(f"{'-' * self.print_width}")
 
         # === Veneration Effect ===
         veneration_eff = patron.veneration_effect
         print(f"Veneration Effect: {veneration_eff.title} (GUID: {veneration_eff.asset.guid})")
         print(f"{veneration_eff.description}")
 
-        print(f"{'-' * 60}")
+        print(f"{'-' * self.print_width}")
 
         # === Exaltation Effect ===
         exaltation_eff = patron.exaltation_effects[0]  # Usually one item.
@@ -167,13 +172,13 @@ class PatronExtractor:
         # print(f"{exaltation_buff_desc}")
         # print(f"{exaltation_target_desc}")
 
-        print(f"{'=' * 60}")
+        print(f"{'=' * self.print_width}")
 
         print(f"Portraits ")  # noqa: F541
         print(f"- Big: {patron.portraits.big.name}")
         print(f"- Small: {patron.portraits.small.name}")
 
-        print(f"{'=' * 60}")
+        print(f"{'=' * self.print_width}")
 
         for eff_index, effect_data in enumerate(patron.local_effects):
             print(f"Title:       {effect_data.title}")
@@ -184,7 +189,7 @@ class PatronExtractor:
                 self._print_buffs(effect_data.asset.buffs)
                 self._print_targets(effect_data.asset.targets)
 
-            print(f"{'-' * 60}")
+            print(f"{'-' * self.print_width}")
 
             if effect_data.milestones:
                 print("Milestones:  ")
@@ -194,11 +199,11 @@ class PatronExtractor:
                 print("Milestones:  None")
 
             if eff_index < len(patron.local_effects) - 1:
-                print(f"{'-' * 60}")
+                print(f"{'-' * self.print_width}")
 
     def _print_buffs(self, buffs: List[Asset]):
         """Private method to process and print buff assets."""
-        print(f"{'-' * 60}")
+        print(f"{'-' * self.print_width}")
         print(f"Buffs: {len(buffs)}")
 
         for buff_index, buff_asset in enumerate(buffs, 1):
@@ -212,13 +217,16 @@ class PatronExtractor:
         """Private method to process and print target assets and asset pools recursively."""
         # Print the header only at the root level
         if level == 0:
-            print(f"{'-' * 60}")
+            print(f"{'-' * self.print_width}")
             print(f"Targets: {len(targets)}")
 
         # Calculate indentation based on recursion depth
         indent = "  " * level
 
         for target_index, target_asset in enumerate(targets, 1):
+            if target_index > 1:
+                print(f"{'-' * self.DEFAULT_PRINT_WIDTH}")
+
             # Print the current target with proper indentation
             print(f"{indent}  |- {target_index} Target: {target_asset.name} (GUID: {target_asset.guid})")
 
@@ -232,14 +240,19 @@ class PatronExtractor:
                 costs = target_asset.formatted_costs
                 if costs:
                     cost_str = ", ".join([f"{c.amount} {c.ingredient}" for c in costs])
-                    print(f"{indent}     [Costs]: {cost_str}")
+                    print(f"{indent}     |- [Costs]: {cost_str}")
 
             # 3. Handle Maintenance (Specific to Units/Ships)
             if isinstance(target_asset, AssetWithMaintenance):
                 m_costs = target_asset.formatted_maintenance_costs
                 if m_costs:
                     m_str = ", ".join([f"{m.amount} {m.product}" for m in m_costs])
-                    print(f"{indent}     [Maintenance]: {m_str}")
+                    print(f"{indent}     |- [Maintenance]: {m_str}")
+
+            # 4. Handle the list of affected buildings / units assets from this target.
+            if isinstance(target_asset, AssetWithBuilding):
+                build_cat_name = target_asset.building_info.category_name
+                print(f"{indent}     |- [Category Name]: {build_cat_name}")
 
     # --- Export Methods ---
 
@@ -288,15 +301,6 @@ class PatronExtractor:
                 final_url = f"{web_base_path}/{file_part}" if web_base_path else file_part
                 return final_url.replace("\\", "/")
 
-            # if flatten:
-            #     file_part = f"{patron_icon['canon_name'] or patron.canonical_name}.webp"
-            # else:
-            #     # Use the mirrored path which now preserves icon_content/features/etc.
-            #     file_part = f"{IconProcessor.get_mirrored_path(patron_icon['path'])}.webp"
-
-            # final_icon_url = f"{web_base_path}/{file_part}" if web_base_path else file_part
-            # final_icon_url = final_icon_url.replace("\\", "/")
-
             # 2. Local Effects & Milestones
             local_effects_json: List[LocalEffectJSON] = [
                 {
@@ -335,7 +339,6 @@ class PatronExtractor:
                 "canon_name": patron.canonical_name,
                 "title": title,
                 "description": description,
-                # "icon_url": final_icon_url,
                 "icon_url": _get_final_url(patron_icon["path"], patron_icon["canon_name"]),
                 "canon_icon_name": patron_icon["canon_name"] or "",
                 "local_effects": local_effects_json,

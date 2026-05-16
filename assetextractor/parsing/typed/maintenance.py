@@ -24,7 +24,7 @@ class AssetWithMaintenance(Asset):
         out: List[tuple[Asset, int]] = []
         for entry in cast("ListAttribute", self.find("Maintenance.Maintenances")):
             product_asset = entry.find_ref("Product")
-            amount = cast(int, entry.find_value("Amount") or 0)
+            amount = cast("int", entry.find_value("Amount") or 0)
             if product_asset is not None:
                 out.append((product_asset, amount))
         return out
