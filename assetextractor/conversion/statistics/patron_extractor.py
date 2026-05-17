@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List, Sequence, TypedDict, cast
+from typing import TYPE_CHECKING, Dict, List, Sequence, TypedDict, Union, cast
 
 from assetextractor.conversion.statistics.icon_processor import IconProcessor
 from assetextractor.parsing.core.texts import StandardTextConverter, Text
@@ -11,12 +11,17 @@ from assetextractor.parsing.typed.building import AssetWithBuilding
 from assetextractor.parsing.typed.cost import AssetWithCosts
 from assetextractor.parsing.typed.maintenance import AssetWithMaintenance
 from assetextractor.parsing.typed.patron import Patron
+from assetextractor.parsing.typed.production_chain import ProductionChain
 
 if TYPE_CHECKING:
     from assetextractor.parsing.core.assets import Asset, AssetCache
     from assetextractor.parsing.typed.effect import Effect
     from assetextractor.parsing.typed.factories import BuildingFactoriesGroup
-    from assetextractor.parsing.typed.production_chain import ProductionChain, ProductionChainBase
+    from assetextractor.parsing.typed.production_chain import ProductionChainBase
+
+# Define a shared type for the production chain mapping keys to avoid repetition and errors
+ChainKey = Union["ProductionChain", "AssetPoolBase", "BuildingFactoriesGroup"]
+ChainMapping = Dict[ChainKey, Dict[int, "BuildingFactoriesGroup"]]
 
 # --- Helper JSON Structures ---
 
@@ -41,7 +46,8 @@ class AffectedChainInfo(TypedDict):
 class LocalEffectJSON(TypedDict):
     title: str
     description: str
-    milestones: List[MilestoneJSON]
+    # milestones: List[MilestoneJSON]
+    """Temporary commented out to simplify the output JSON. DO NOT REMOVE"""
     affected_chains: Dict[str, AffectedChainInfo]
 
 
@@ -53,7 +59,6 @@ class VenerationEffectJSON(TypedDict):
 class ShrineItemJSON(TypedDict):
     guid: int
     title: str
-    # description: str
 
 
 class ShrineEffectJSON(TypedDict):
@@ -76,17 +81,11 @@ class PatronItemJSON(TypedDict):
     """Patron output JSON structure."""
 
     uid: int
-    # name: str  # Standard.Name
-    # """Raw Name."""
     canon_name: str
-    """Canonical Name. This is unique per asset."""
-    title: str  # English by default
-    description: str  # English by default
-    """In-game description."""
+    title: str
+    description: str
     icon_url: str
-    """The original 2D asset icon url."""
     canon_icon_name: str
-    """Canonical icon name."""
     local_effects: List[LocalEffectJSON]
     veneration_effect: VenerationEffectJSON
     shrine_effect: ShrineEffectJSON
@@ -160,10 +159,14 @@ class PatronExtractor:
 
         return any(_has_asset_recursive(et, tgt) for et in targets_to_match)
 
-    def _get_chain_building_guids(self, chain: ProductionChain | AssetPoolBase) -> List[int]:
-        """Extracts all expected structural building GUIDs defined within a chain or pool asset layout."""
+    def _get_chain_building_guids(self, chain: ChainKey) -> List[int]:
+        """Extracts all expected structural building GUIDs defined within a chain, pool, or individual factory."""
         if isinstance(chain, AssetPoolBase):
             return [b.guid for b in chain.asset_pool_list if hasattr(b, "guid")]
+
+        # If the "chain" is actually just a single building (fallback case)
+        if not isinstance(chain, ProductionChain):
+            return [chain.guid] if hasattr(chain, "guid") else []
 
         guids: List[int] = []
 
@@ -173,14 +176,13 @@ class PatronExtractor:
             for sub in node.tier:
                 _traverse(sub)
 
+        # Check for ProductionChain template structure
         if hasattr(chain, "production_chain") and chain.production_chain:
             _traverse(chain.production_chain)
         return guids
 
     def _get_unique_chain_texts_for_effect(
-        self,
-        effect_targets: Sequence[Asset],
-        chains_mapping: Dict[ProductionChain | AssetPoolBase, Dict[int, BuildingFactoriesGroup]],
+        self, effect_targets: Sequence[Asset], chains_mapping: ChainMapping
     ) -> List[str]:
         """
         Helper to find unique production chain text values applicable ONLY to a
@@ -198,16 +200,73 @@ class PatronExtractor:
                 if self._is_in_effect_targets(tgt_asset, effect_targets)
             }
 
-            # Get the total required buildings defined in the chain template layout
-            required_guids = self._get_chain_building_guids(chain)
-
             # Enforce completeness rule
-            if required_guids and all(b_guid in active_guids for b_guid in required_guids):
+            is_complete = False
+            if isinstance(chain, AssetPoolBase):
+                is_complete = len(active_guids) > 0
+            else:
+                # Get the total required buildings defined in the chain template layout
+                required_guids = self._get_chain_building_guids(chain)
+                is_complete = required_guids and all(b_guid in active_guids for b_guid in required_guids)
+
+            if is_complete:
                 chain_text = self._get_text(chain)
                 if chain_text and chain_text != "N/A" and chain_text not in unique_chain_texts:
                     unique_chain_texts.append(chain_text)
 
         return unique_chain_texts
+
+    def _build_affected_chains_and_description(
+        self, patron: Patron, effect: Effect, initial_description: str
+    ) -> tuple[Dict[str, AffectedChainInfo], str]:
+        """
+        Private helper method to resolve the affected production chains layout dictionary
+        and build the localized description text listing for a given effect.
+        """
+        affected_chains_dict: Dict[str, AffectedChainInfo] = {}
+        final_description = initial_description
+
+        # Patron property is correctly typed as ChainMapping
+        chains_mapping: ChainMapping = patron.production_chains_by_target
+
+        effect_targets = effect.targets if (effect and hasattr(effect, "targets")) else []
+        unique_chain_texts = self._get_unique_chain_texts_for_effect(effect_targets, chains_mapping)
+
+        for chain, targets_dict in chains_mapping.items():
+            chain_guid_str = str(chain.guid)
+
+            # Gather matched building assets active for this effect's targets
+            active_production_assets: List[ProductionAssetInfo] = [
+                {"guid": tgt_asset.guid, "name": tgt_asset.name, "text": self._get_text(tgt_asset)}
+                for tgt_asset in targets_dict.values()
+                if self._is_in_effect_targets(tgt_asset, effect_targets)
+            ]
+
+            if active_production_assets:
+                active_guids = {asset["guid"] for asset in active_production_assets}
+
+                # Check if it satisfies the structural completeness verification parameters
+                is_complete = False
+                if isinstance(chain, AssetPoolBase):
+                    is_complete = True
+                else:
+                    required_guids = self._get_chain_building_guids(chain)
+                    is_complete = required_guids and all(b_guid in active_guids for b_guid in required_guids)
+
+                if is_complete:
+                    chain_info: AffectedChainInfo = {
+                        "name": chain.name,
+                        "text": self._get_text(chain),
+                        "production_assets": active_production_assets,
+                    }
+                    affected_chains_dict[chain_guid_str] = chain_info
+
+        # Append comma-separated chain strings if present
+        if unique_chain_texts:
+            chains_string = ", ".join(unique_chain_texts)
+            final_description = f"{final_description} {chains_string}"
+
+        return affected_chains_dict, final_description
 
     # --- Printing Methods ---
 
@@ -255,17 +314,13 @@ class PatronExtractor:
 
         # === Exaltation Effect ===
         exaltation_eff = patron.exaltation_effects[0]  # Usually one item.
-        # exaltation_buff = exaltation_eff.asset.buffs[0]
-        # exaltation_target = exaltation_eff.asset.targets[0]
 
         print(f"Exaltation Effect: {exaltation_eff.title} (GUID: {exaltation_eff.asset.guid})")
         print(f"{exaltation_eff.description}")
-        # print(f"{exaltation_buff_desc}")
-        # print(f"{exaltation_target_desc}")
 
         print(f"{'=' * self.print_width}")
 
-        print(f"Portraits ")  # noqa: F541
+        print("Portraits ")
         print(f"- Big: {patron.portraits.big.name}")
         print(f"- Small: {patron.portraits.small.name}")
 
@@ -318,23 +373,13 @@ class PatronExtractor:
 
         for buff_index, buff_asset in enumerate(buffs, 1):
             print(f"  |- {buff_index} Buff - {buff_asset.name} (GUID: {buff_asset.guid})")
-            match buff_asset:
-                case _:
-                    # Default generic asset. Do nothing in the meantime.
-                    pass
 
-    def _print_targets(
-        self,
-        targets: Sequence[Asset],
-        chains_mapping: Dict[ProductionChain | AssetPoolBase, Dict[int, BuildingFactoriesGroup]],
-        level: int = 0,
-    ) -> None:
+    def _print_targets(self, targets: Sequence[Asset], chains_mapping: ChainMapping, level: int = 0) -> None:
         """Private method to process and print target assets and asset pools recursively.
 
         Args:
             targets: The sequence of target assets to loop over.
-            chains_mapping: The patron's production_chains_by_target property dictionary
-                            (Dict[ProductionChainAsset, Dict[TargetGUID, TargetAsset]]).
+            chains_mapping: The patron's production_chains_by_target property dictionary.
             level: Recursion depth formatting level.
         """
         # Print the header only at the root level
@@ -381,49 +426,6 @@ class PatronExtractor:
                 if target_asset.guid in targets_dict:
                     chain_text = self._get_text(chain)
                     print(f"{indent}     |- [Production Chain]: {chain.name} (GUID: {chain.guid}) - {chain_text}")
-
-    def _build_affected_chains_and_description(
-        self, patron: Patron, effect: Effect, initial_description: str
-    ) -> tuple[Dict[str, AffectedChainInfo], str]:
-        """
-        Private helper method to resolve the affected production chains layout dictionary
-        and build the localized description text listing for a given effect.
-        """
-        affected_chains_dict: Dict[str, AffectedChainInfo] = {}
-        final_description = initial_description
-
-        effect_targets = effect.targets if (effect and hasattr(effect, "targets")) else []
-        unique_chain_texts = self._get_unique_chain_texts_for_effect(effect_targets, patron.production_chains_by_target)
-
-        for chain, targets_dict in patron.production_chains_by_target.items():
-            chain_guid_str = str(chain.guid)
-
-            # Gather matched building assets active for this effect's targets
-            active_production_assets: List[ProductionAssetInfo] = [
-                {"guid": tgt_asset.guid, "name": tgt_asset.name, "text": self._get_text(tgt_asset)}
-                for tgt_asset in targets_dict.values()
-                if self._is_in_effect_targets(tgt_asset, effect_targets)
-            ]
-
-            if active_production_assets:
-                active_guids = {asset["guid"] for asset in active_production_assets}
-                required_guids = self._get_chain_building_guids(chain)
-
-                # Check if it satisfies the structural completeness verification parameters
-                if required_guids and all(b_guid in active_guids for b_guid in required_guids):
-                    chain_info: AffectedChainInfo = {
-                        "name": chain.name,
-                        "text": self._get_text(chain),
-                        "production_assets": active_production_assets,
-                    }
-                    affected_chains_dict[chain_guid_str] = chain_info
-
-        # Append comma-separated chain strings if present
-        if unique_chain_texts:
-            chains_string = ", ".join(unique_chain_texts)
-            final_description = f"{final_description} {chains_string}"
-
-        return affected_chains_dict, final_description
 
     # --- Export Methods ---
 
@@ -479,7 +481,7 @@ class PatronExtractor:
                 final_description = e.description
 
                 # Only resolve production chain dependencies for the first local effect
-                if eff_idx == 0:
+                if eff_idx == 0 and e.asset:
                     # Leverage the cleanly isolated private helper method
                     affected_chains_dict, final_description = self._build_affected_chains_and_description(
                         patron=patron, effect=e.asset, initial_description=e.description
@@ -489,7 +491,7 @@ class PatronExtractor:
                     {
                         "title": e.title,
                         "description": final_description,
-                        "milestones": [{"devotion": m.devotion, "buff_scaling": m.buff_scaling} for m in e.milestones],
+                        # "milestones": [{"devotion": m.devotion, "buff_scaling": m.buff_scaling} for m in e.milestones],
                         "affected_chains": affected_chains_dict,
                     }
                 )
@@ -503,14 +505,7 @@ class PatronExtractor:
             shrine_json: ShrineEffectJSON = {
                 "title": shrine.name,
                 "guid": shrine.guid,
-                "shrines": [
-                    {
-                        "guid": s.guid,
-                        "title": self._get_text(s),
-                        # "description": s.localized_description
-                    }
-                    for s in shrine.shrines
-                ],
+                "shrines": [{"guid": s.guid, "title": self._get_text(s)} for s in shrine.shrines],
             }
 
             # 5. Exaltation Effects

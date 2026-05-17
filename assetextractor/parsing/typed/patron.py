@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING, Dict, List, cast
 from assetextractor.parsing.core.assets import Asset
 from assetextractor.parsing.core.attributes import FileNameAttribute, WandImageProto
 from assetextractor.parsing.typed.asset_pool_base import AssetPoolBase
+from assetextractor.parsing.typed.production_chain import ProductionChain, ProductionChainBase
+from assetextractor.parsing.typed.factories import BuildingFactoriesGroup
 
 if TYPE_CHECKING:
     from assetextractor.parsing.core.attributes import ListAttribute
@@ -15,8 +17,6 @@ if TYPE_CHECKING:
     from assetextractor.parsing.typed.asset_pool_named import AssetPoolNamed
     from assetextractor.parsing.typed.effect import Effect
     from assetextractor.parsing.typed.mini_institution_building import MiniInstitutionBuilding
-    from assetextractor.parsing.typed.production_chain import ProductionChain
-    from assetextractor.parsing.typed.factories import BuildingFactoriesGroup
 
 
 @dataclass(frozen=True)
@@ -215,75 +215,104 @@ class Patron(Asset, template_names="Patron"):
         return ShrineEffect(guid=shrine_asset.guid, name=shrine_asset.name, shrines=shrines_list)
 
     @cached_property
-    def production_chains_by_target(self) -> Dict[ProductionChain | AssetPoolBase, Dict[int, BuildingFactoriesGroup]]:
+    def production_chains_by_target(
+        self,
+    ) -> Dict[ProductionChain | AssetPoolBase | BuildingFactoriesGroup, Dict[int, BuildingFactoriesGroup]]:
         """
-        Processes targets and groups them by their parent Production Chain.
-        For Mines (GUID: 50225) and Quarries (GUID: 50608), it bypasses ProductionChain
-        lookup entirely and groups leaf assets directly under the pool container asset.
-
-        Returns:
-            Dict[ProductionChain | AssetPoolBase, Dict[int, BuildingFactoriesGroup]]:
-                - Top level key: The unique ProductionChain or specific AssetPool asset object
-                - Inner level key: The target asset's integer GUID
-                - Inner value: The target asset object itself
+        Dynamically clusters targets structurally.
+        - If a nested AssetPool contains ONLY factory buildings, we resolve standard ProductionChain headers.
+        - If an AssetPool contains further structural Sub-Pools, those Sub-Pools act as the top-level keys.
+        - Standalone factory buildings map to their explicit external ProductionChains or fallback to themselves.
         """
-        mapping: Dict[ProductionChain | AssetPoolBase, Dict[int, BuildingFactoriesGroup]] = {}
+        mapping: Dict[ProductionChain | AssetPoolBase | BuildingFactoriesGroup, Dict[int, BuildingFactoriesGroup]] = {}
 
-        def _process_asset_production_chain(target_asset: Asset, current_pool_key: AssetPoolBase | None = None):
-            pool_key: ProductionChain | AssetPoolBase | None = current_pool_key
+        def _get_chain_buildings(chain: ProductionChain) -> List[BuildingFactoriesGroup]:
+            buildings: List[BuildingFactoriesGroup] = []
 
-            # Intercept the specific Mine and Quarry pools to use them as top-level structural keys
-            if getattr(target_asset, "guid", None) in (50225, 50608):
-                pool_key = cast("AssetPoolBase", target_asset)
-                if pool_key not in mapping:
-                    mapping[pool_key] = {}
+            def _traverse(node: ProductionChainBase):
+                if node.building:
+                    buildings.append(node.building)
+                for sub in node.tier:
+                    _traverse(sub)
 
-            if pool_key is not None:
-                # Group deep leaf production assets directly under the respective pool container key
-                if not isinstance(target_asset, AssetPoolBase):
-                    mapping[pool_key][target_asset.guid] = cast("BuildingFactoriesGroup", target_asset)
-            else:
-                # Standard behavior: Trace references to find parent ProductionChain templates
-                referenced_by = getattr(target_asset, "referenced_by", None)
-                if referenced_by:
-                    for ref in referenced_by.values():
-                        source = getattr(ref, "source", None)
-                        if source:
-                            template = getattr(source, "template", None)
-                            if template and getattr(template, "name", None) == "ProductionChain":
-                                chain_asset = source
+            if hasattr(chain, "production_chain") and chain.production_chain:
+                _traverse(chain.production_chain)
+            return buildings
 
-                                # Initialize the chain entry if seen for the first time
-                                if chain_asset not in mapping:
-                                    mapping[chain_asset] = {}
+        def _find_production_chains(building: Asset) -> List[ProductionChain]:
+            chains: List[ProductionChain] = []
+            referenced_by = getattr(building, "referenced_by", None)
+            if referenced_by:
+                for ref in referenced_by.values():
+                    source = getattr(ref, "source", None)
+                    if source and isinstance(source, ProductionChain):
+                        chains.append(source)
+            return chains
 
-                                # Add the specific target asset under this chain group
-                                mapping[chain_asset][target_asset.guid] = cast("BuildingFactoriesGroup", target_asset)
-
-            # Descend recursively through structural nested asset pools
-            if isinstance(target_asset, AssetPoolBase):
-                for sub_asset in target_asset.asset_pool_list:
-                    _process_asset_production_chain(sub_asset, pool_key)
-
-        # Crawl local and exaltation targets for this specific patron
+        # Collect target pools from local and exaltation effects
+        target_pools: List[AssetPoolBase] = []
         for effect in self.local_effects:
             if effect.asset and hasattr(effect.asset, "targets"):
                 for target in effect.asset.targets:
-                    _process_asset_production_chain(target)
+                    target_pools.append(target)
         for exalt in self.exaltation_effects:
             if exalt.asset and hasattr(exalt.asset, "targets"):
                 for target in exalt.asset.targets:
-                    _process_asset_production_chain(target)
+                    target_pools.append(target)
+
+        for target_pool in target_pools:
+            nested_pools = [sub for sub in target_pool.asset_pool_list if isinstance(sub, AssetPoolBase)]
+
+            if nested_pools:
+                # Vulcan Case: the top-level pool contains nested pools.
+                # We process each nested pool as an active_pool context.
+                for active_pool in nested_pools:
+                    pool_buildings = [b for b in active_pool.asset_pool_list if isinstance(b, BuildingFactoriesGroup)]
+                    pool_guids = {b.guid for b in pool_buildings if hasattr(b, "guid")}
+
+                    for building in pool_buildings:
+                        chains = _find_production_chains(building)
+                        has_complete_chain = False
+
+                        for chain in chains:
+                            chain_buildings = _get_chain_buildings(chain)
+                            chain_guids = {b.guid for b in chain_buildings if hasattr(b, "guid")}
+                            all_present = len(chain_guids) > 0 and chain_guids.issubset(pool_guids)
+
+                            if all_present:
+                                if chain not in mapping:
+                                    mapping[chain] = {}
+                                mapping[chain][building.guid] = building
+                                has_complete_chain = True
+
+                        if not has_complete_chain:
+                            if active_pool not in mapping:
+                                mapping[active_pool] = {}
+                            mapping[active_pool][building.guid] = building
+            else:
+                # Neptune Case / Ceres Case / Minerva Case: the top-level pool contains buildings directly.
+                active_pool = target_pool
+                pool_buildings = [b for b in active_pool.asset_pool_list if isinstance(b, BuildingFactoriesGroup)]
+                pool_guids = {b.guid for b in pool_buildings if hasattr(b, "guid")}
+
+                for building in pool_buildings:
+                    chains = _find_production_chains(building)
+                    has_complete_chain = False
+
+                    for chain in chains:
+                        chain_buildings = _get_chain_buildings(chain)
+                        chain_guids = {b.guid for b in chain_buildings if hasattr(b, "guid")}
+                        all_present = len(chain_guids) > 0 and chain_guids.issubset(pool_guids)
+
+                        if all_present:
+                            if chain not in mapping:
+                                mapping[chain] = {}
+                            mapping[chain][building.guid] = building
+                            has_complete_chain = True
+
+                    if not has_complete_chain:
+                        if building not in mapping:
+                            mapping[building] = {}
+                        mapping[building][building.guid] = building
 
         return mapping
-
-
-# The GUIDs of Mines and Quarries Assets with the asset pool list are:
-
-# - AssetPoolNamed -> Vulcanus Goods - GUID: 144801
-
-# Contains both Mines and Quarries:
-# - AssetPoolNamed -> Asset Pool Production All Mines - GUID: 50225
-# - AssetPoolNamed -> Asset Pool Production All Quarries - GUID: 50608
-
-# So I want only the assets from those two (Quarries and Mines) instead of the ProductionChain being referenced
