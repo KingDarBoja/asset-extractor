@@ -217,7 +217,7 @@ class PatronExtractor:
         return unique_chain_texts
 
     def _build_affected_chains_and_description(
-        self, patron: Patron, effect: Effect, initial_description: str
+        self, effect: Effect, initial_description: str
     ) -> tuple[Dict[str, AffectedChainInfo], str]:
         """
         Private helper method to resolve the affected production chains layout dictionary
@@ -227,7 +227,7 @@ class PatronExtractor:
         final_description = initial_description
 
         # Patron property is correctly typed as ChainMapping
-        chains_mapping: ChainMapping = patron.production_chains_by_target
+        chains_mapping: ChainMapping = effect.production_chains_by_target
 
         effect_targets = effect.targets if (effect and hasattr(effect, "targets")) else []
         unique_chain_texts = self._get_unique_chain_texts_for_effect(effect_targets, chains_mapping)
@@ -335,7 +335,7 @@ class PatronExtractor:
                     effect_data.asset.targets if (effect_data.asset and hasattr(effect_data.asset, "targets")) else []
                 )
                 unique_chain_texts = self._get_unique_chain_texts_for_effect(
-                    effect_targets, patron.production_chains_by_target
+                    effect_targets, effect_data.asset.production_chains_by_target
                 )
 
                 # Append the comma-separated strings to the printed description if unique chains exist
@@ -351,7 +351,7 @@ class PatronExtractor:
                 self._print_buffs(effect_data.asset.buffs)
 
                 # Only pass the chains mapping for the first effect to keep target prints clean
-                current_chains_mapping = patron.production_chains_by_target if eff_index == 0 else {}
+                current_chains_mapping = effect_data.asset.production_chains_by_target if eff_index == 0 else {}
                 self._print_targets(effect_data.asset.targets, current_chains_mapping)
 
             print(f"{'-' * self.print_width}")
@@ -484,7 +484,7 @@ class PatronExtractor:
                 if eff_idx == 0 and e.asset:
                     # Leverage the cleanly isolated private helper method
                     affected_chains_dict, final_description = self._build_affected_chains_and_description(
-                        patron=patron, effect=e.asset, initial_description=e.description
+                        effect=e.asset, initial_description=e.description
                     )
 
                 local_effects_json.append(

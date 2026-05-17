@@ -8,10 +8,11 @@ from __future__ import annotations
 
 from assetextractor.parsing.typed.building import AssetWithBuilding
 from assetextractor.parsing.typed.cost import AssetWithCosts
+from assetextractor.parsing.typed.factory_base import AssetWithFactoryBase
 from assetextractor.parsing.typed.maintenance import AssetWithMaintenance
 
 
-class BuildingFactoriesGroup(AssetWithCosts, AssetWithMaintenance, AssetWithBuilding):
+class BuildingFactoriesGroup(AssetWithCosts, AssetWithMaintenance, AssetWithBuilding, AssetWithFactoryBase):
     """
     Base group for assets categorized under 'Objects' -> 'Buildings' -> 'Factories'.
 

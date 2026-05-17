@@ -3,13 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List, cast
+from typing import TYPE_CHECKING, List, cast
 
 from assetextractor.parsing.core.assets import Asset
 from assetextractor.parsing.core.attributes import FileNameAttribute, WandImageProto
-from assetextractor.parsing.typed.asset_pool_base import AssetPoolBase
-from assetextractor.parsing.typed.production_chain import ProductionChain, ProductionChainBase
-from assetextractor.parsing.typed.factories import BuildingFactoriesGroup
 
 if TYPE_CHECKING:
     from assetextractor.parsing.core.attributes import ListAttribute
@@ -213,106 +210,3 @@ class Patron(Asset, template_names="Patron"):
             shrines_list.append(building)
 
         return ShrineEffect(guid=shrine_asset.guid, name=shrine_asset.name, shrines=shrines_list)
-
-    @cached_property
-    def production_chains_by_target(
-        self,
-    ) -> Dict[ProductionChain | AssetPoolBase | BuildingFactoriesGroup, Dict[int, BuildingFactoriesGroup]]:
-        """
-        Dynamically clusters targets structurally.
-        - If a nested AssetPool contains ONLY factory buildings, we resolve standard ProductionChain headers.
-        - If an AssetPool contains further structural Sub-Pools, those Sub-Pools act as the top-level keys.
-        - Standalone factory buildings map to their explicit external ProductionChains or fallback to themselves.
-        """
-        mapping: Dict[ProductionChain | AssetPoolBase | BuildingFactoriesGroup, Dict[int, BuildingFactoriesGroup]] = {}
-
-        def _get_chain_buildings(chain: ProductionChain) -> List[BuildingFactoriesGroup]:
-            buildings: List[BuildingFactoriesGroup] = []
-
-            def _traverse(node: ProductionChainBase):
-                if node.building:
-                    buildings.append(node.building)
-                for sub in node.tier:
-                    _traverse(sub)
-
-            if hasattr(chain, "production_chain") and chain.production_chain:
-                _traverse(chain.production_chain)
-            return buildings
-
-        def _find_production_chains(building: Asset) -> List[ProductionChain]:
-            chains: List[ProductionChain] = []
-            referenced_by = getattr(building, "referenced_by", None)
-            if referenced_by:
-                for ref in referenced_by.values():
-                    source = getattr(ref, "source", None)
-                    if source and isinstance(source, ProductionChain):
-                        chains.append(source)
-            return chains
-
-        # Collect target pools from local and exaltation effects
-        target_pools: List[AssetPoolBase] = []
-        for effect in self.local_effects:
-            if effect.asset and hasattr(effect.asset, "targets"):
-                for target in effect.asset.targets:
-                    target_pools.append(target)
-        for exalt in self.exaltation_effects:
-            if exalt.asset and hasattr(exalt.asset, "targets"):
-                for target in exalt.asset.targets:
-                    target_pools.append(target)
-
-        for target_pool in target_pools:
-            nested_pools = [sub for sub in target_pool.asset_pool_list if isinstance(sub, AssetPoolBase)]
-
-            if nested_pools:
-                # Vulcan Case: the top-level pool contains nested pools.
-                # We process each nested pool as an active_pool context.
-                for active_pool in nested_pools:
-                    pool_buildings = [b for b in active_pool.asset_pool_list if isinstance(b, BuildingFactoriesGroup)]
-                    pool_guids = {b.guid for b in pool_buildings if hasattr(b, "guid")}
-
-                    for building in pool_buildings:
-                        chains = _find_production_chains(building)
-                        has_complete_chain = False
-
-                        for chain in chains:
-                            chain_buildings = _get_chain_buildings(chain)
-                            chain_guids = {b.guid for b in chain_buildings if hasattr(b, "guid")}
-                            all_present = len(chain_guids) > 0 and chain_guids.issubset(pool_guids)
-
-                            if all_present:
-                                if chain not in mapping:
-                                    mapping[chain] = {}
-                                mapping[chain][building.guid] = building
-                                has_complete_chain = True
-
-                        if not has_complete_chain:
-                            if active_pool not in mapping:
-                                mapping[active_pool] = {}
-                            mapping[active_pool][building.guid] = building
-            else:
-                # Neptune Case / Ceres Case / Minerva Case: the top-level pool contains buildings directly.
-                active_pool = target_pool
-                pool_buildings = [b for b in active_pool.asset_pool_list if isinstance(b, BuildingFactoriesGroup)]
-                pool_guids = {b.guid for b in pool_buildings if hasattr(b, "guid")}
-
-                for building in pool_buildings:
-                    chains = _find_production_chains(building)
-                    has_complete_chain = False
-
-                    for chain in chains:
-                        chain_buildings = _get_chain_buildings(chain)
-                        chain_guids = {b.guid for b in chain_buildings if hasattr(b, "guid")}
-                        all_present = len(chain_guids) > 0 and chain_guids.issubset(pool_guids)
-
-                        if all_present:
-                            if chain not in mapping:
-                                mapping[chain] = {}
-                            mapping[chain][building.guid] = building
-                            has_complete_chain = True
-
-                    if not has_complete_chain:
-                        if building not in mapping:
-                            mapping[building] = {}
-                        mapping[building][building.guid] = building
-
-        return mapping
