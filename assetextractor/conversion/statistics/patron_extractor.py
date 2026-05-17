@@ -46,8 +46,7 @@ class AffectedChainInfo(TypedDict):
 class LocalEffectJSON(TypedDict):
     title: str
     description: str
-    # milestones: List[MilestoneJSON]
-    """Temporary commented out to simplify the output JSON. DO NOT REMOVE"""
+    milestones: List[MilestoneJSON]
     affected_chains: Dict[str, AffectedChainInfo]
 
 
@@ -491,7 +490,7 @@ class PatronExtractor:
                     {
                         "title": e.title,
                         "description": final_description,
-                        # "milestones": [{"devotion": m.devotion, "buff_scaling": m.buff_scaling} for m in e.milestones],
+                        "milestones": [{"devotion": m.devotion, "buff_scaling": m.buff_scaling} for m in e.milestones],
                         "affected_chains": affected_chains_dict,
                     }
                 )
