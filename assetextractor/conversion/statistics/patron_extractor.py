@@ -1,15 +1,21 @@
+from __future__ import annotations
+
 import json
 from pathlib import Path
-from typing import Dict, List, Sequence, TypedDict, cast
+from typing import TYPE_CHECKING, Dict, List, Sequence, TypedDict, cast
 
 from assetextractor.conversion.statistics.icon_processor import IconProcessor
-from assetextractor.parsing.core.assets import Asset, AssetCache
 from assetextractor.parsing.core.texts import StandardTextConverter, Text
 from assetextractor.parsing.typed.asset_pool_base import AssetPoolBase
 from assetextractor.parsing.typed.building import AssetWithBuilding
 from assetextractor.parsing.typed.cost import AssetWithCosts
 from assetextractor.parsing.typed.maintenance import AssetWithMaintenance
 from assetextractor.parsing.typed.patron import Patron
+
+if TYPE_CHECKING:
+    from assetextractor.parsing.core.assets import Asset, AssetCache
+    from assetextractor.parsing.typed.factories import BuildingFactoriesGroup
+    from assetextractor.parsing.typed.production_chain import ProductionChain, ProductionChainBase
 
 # --- Helper JSON Structures ---
 
@@ -138,34 +144,64 @@ class PatronExtractor:
             return asset.text() if asset.text else str(asset.text)
         return "N/A"
 
-    def _is_in_effect_targets(self, tgt: Asset, targets_to_match: Sequence[Asset]) -> bool:
-        """Recursively checks if a given target asset is found within a sequence of effect targets,
+    def _is_in_effect_targets(self, tgt: BuildingFactoriesGroup, targets_to_match: Sequence[Asset]) -> bool:
+        """
+        Recursively checks if a given target asset is found within a sequence of effect targets,
         drilling down into nested AssetPoolBase structures when encountered.
         """
 
-        def _has_asset_recursive(pool: Asset, target: Asset) -> bool:
-            if pool == target:
+        def _has_asset_recursive(current: Asset, target: BuildingFactoriesGroup) -> bool:
+            if current == target:
                 return True
-            if isinstance(pool, AssetPoolBase):
-                return any(_has_asset_recursive(sub, target) for sub in pool.asset_pool_list)
+            if isinstance(current, AssetPoolBase):
+                return any(_has_asset_recursive(sub, target) for sub in current.asset_pool_list)
             return False
 
         return any(_has_asset_recursive(et, tgt) for et in targets_to_match)
 
+    def _get_chain_building_guids(self, chain: ProductionChain | AssetPoolBase) -> List[int]:
+        """Extracts all expected structural building GUIDs defined within a chain or pool asset layout."""
+        if isinstance(chain, AssetPoolBase):
+            return [b.guid for b in chain.asset_pool_list if hasattr(b, "guid")]
+
+        guids: List[int] = []
+
+        def _traverse(node: ProductionChainBase) -> None:
+            if node.building:
+                guids.append(node.building.guid)
+            for sub in node.tier:
+                _traverse(sub)
+
+        if hasattr(chain, "production_chain") and chain.production_chain:
+            _traverse(chain.production_chain)
+        return guids
+
     def _get_unique_chain_texts_for_effect(
-        self, effect_targets: Sequence[Asset], chains_mapping: Dict[Asset, Dict[int, Asset]]
+        self,
+        effect_targets: Sequence[Asset],
+        chains_mapping: Dict[ProductionChain | AssetPoolBase, Dict[int, BuildingFactoriesGroup]],
     ) -> List[str]:
-        """Helper to find unique production chain text values applicable ONLY to a specific effect's targets."""
+        """
+        Helper to find unique production chain text values applicable ONLY to a
+        specific effect's targets, ensuring the chain/pool is complete under the
+        given active target parameters.
+        """
         unique_chain_texts: List[str] = []
 
         # Use our clean reversed property to loop through active chains
         for chain, targets_dict in chains_mapping.items():
-            # Check if any of this chain's associated targets match the targets active in this effect
-            has_active_target = any(
-                self._is_in_effect_targets(tgt_asset, effect_targets) for tgt_asset in targets_dict.values()
-            )
+            # Track all matched/active building GUIDs for this chain under the current effect targets
+            active_guids = {
+                tgt_asset.guid
+                for tgt_asset in targets_dict.values()
+                if self._is_in_effect_targets(tgt_asset, effect_targets)
+            }
 
-            if has_active_target:
+            # Get the total required buildings defined in the chain template layout
+            required_guids = self._get_chain_building_guids(chain)
+
+            # Enforce completeness rule
+            if required_guids and all(b_guid in active_guids for b_guid in required_guids):
                 chain_text = self._get_text(chain)
                 if chain_text and chain_text != "N/A" and chain_text not in unique_chain_texts:
                     unique_chain_texts.append(chain_text)
@@ -286,7 +322,12 @@ class PatronExtractor:
                     # Default generic asset. Do nothing in the meantime.
                     pass
 
-    def _print_targets(self, targets: Sequence[Asset], chains_mapping: Dict[Asset, Dict[int, Asset]], level: int = 0):
+    def _print_targets(
+        self,
+        targets: Sequence[Asset],
+        chains_mapping: Dict[ProductionChain | AssetPoolBase, Dict[int, BuildingFactoriesGroup]],
+        level: int = 0,
+    ) -> None:
         """Private method to process and print target assets and asset pools recursively.
 
         Args:
@@ -355,7 +396,6 @@ class PatronExtractor:
         # Switch the shared cache to THIS extractor's language before processing
         self._prepare_converter()
 
-        # TODO: Finish this.
         export_data: Dict[str, PatronItemJSON] = {}
 
         # self.patrons is already sorted from extract_all()
@@ -415,12 +455,17 @@ class PatronExtractor:
                             ]
 
                             if active_production_assets:
-                                chain_info: AffectedChainInfo = {
-                                    "name": chain.name,
-                                    "text": self._get_text(chain),
-                                    "production_assets": active_production_assets,
-                                }
-                                affected_chains_dict[chain_guid_str] = chain_info
+                                active_guids = {asset["guid"] for asset in active_production_assets}
+                                required_guids = self._get_chain_building_guids(chain)
+
+                                # Only commit chain info to output dictionary if it satisfies completeness requirements
+                                if required_guids and all(b_guid in active_guids for b_guid in required_guids):
+                                    chain_info: AffectedChainInfo = {
+                                        "name": chain.name,
+                                        "text": self._get_text(chain),
+                                        "production_assets": active_production_assets,
+                                    }
+                                    affected_chains_dict[chain_guid_str] = chain_info
 
                     # Append comma-separated list to description
                     if unique_chain_texts:

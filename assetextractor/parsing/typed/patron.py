@@ -15,6 +15,8 @@ if TYPE_CHECKING:
     from assetextractor.parsing.typed.asset_pool_named import AssetPoolNamed
     from assetextractor.parsing.typed.effect import Effect
     from assetextractor.parsing.typed.mini_institution_building import MiniInstitutionBuilding
+    from assetextractor.parsing.typed.production_chain import ProductionChain
+    from assetextractor.parsing.typed.factories import BuildingFactoriesGroup
 
 
 @dataclass(frozen=True)
@@ -213,33 +215,33 @@ class Patron(Asset, template_names="Patron"):
         return ShrineEffect(guid=shrine_asset.guid, name=shrine_asset.name, shrines=shrines_list)
 
     @cached_property
-    def production_chains_by_target(self) -> Dict[Asset, Dict[int, Asset]]:
+    def production_chains_by_target(self) -> Dict[ProductionChain | AssetPoolBase, Dict[int, BuildingFactoriesGroup]]:
         """
         Processes targets and groups them by their parent Production Chain.
         For Mines (GUID: 50225) and Quarries (GUID: 50608), it bypasses ProductionChain
         lookup entirely and groups leaf assets directly under the pool container asset.
 
         Returns:
-            Dict[Asset, Dict[int, Asset]]:
+            Dict[ProductionChain | AssetPoolBase, Dict[int, BuildingFactoriesGroup]]:
                 - Top level key: The unique ProductionChain or specific AssetPool asset object
                 - Inner level key: The target asset's integer GUID
                 - Inner value: The target asset object itself
         """
-        mapping: Dict[Asset, Dict[int, Asset]] = {}
+        mapping: Dict[ProductionChain | AssetPoolBase, Dict[int, BuildingFactoriesGroup]] = {}
 
-        def _process_asset_production_chain(target_asset: Asset, current_pool_key: Asset | None = None):
-            pool_key = current_pool_key
+        def _process_asset_production_chain(target_asset: Asset, current_pool_key: AssetPoolBase | None = None):
+            pool_key: ProductionChain | AssetPoolBase | None = current_pool_key
 
             # Intercept the specific Mine and Quarry pools to use them as top-level structural keys
             if getattr(target_asset, "guid", None) in (50225, 50608):
-                pool_key = target_asset
+                pool_key = cast("AssetPoolBase", target_asset)
                 if pool_key not in mapping:
                     mapping[pool_key] = {}
 
             if pool_key is not None:
                 # Group deep leaf production assets directly under the respective pool container key
                 if not isinstance(target_asset, AssetPoolBase):
-                    mapping[pool_key][target_asset.guid] = target_asset
+                    mapping[pool_key][target_asset.guid] = cast("BuildingFactoriesGroup", target_asset)
             else:
                 # Standard behavior: Trace references to find parent ProductionChain templates
                 referenced_by = getattr(target_asset, "referenced_by", None)
@@ -256,7 +258,7 @@ class Patron(Asset, template_names="Patron"):
                                     mapping[chain_asset] = {}
 
                                 # Add the specific target asset under this chain group
-                                mapping[chain_asset][target_asset.guid] = target_asset
+                                mapping[chain_asset][target_asset.guid] = cast("BuildingFactoriesGroup", target_asset)
 
             # Descend recursively through structural nested asset pools
             if isinstance(target_asset, AssetPoolBase):
