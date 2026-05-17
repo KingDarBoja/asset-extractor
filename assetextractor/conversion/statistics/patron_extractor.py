@@ -1,5 +1,4 @@
 import json
-from functools import cached_property
 from pathlib import Path
 from typing import Dict, List, Sequence, TypedDict, cast
 
@@ -20,10 +19,23 @@ class MilestoneJSON(TypedDict):
     buff_scaling: int
 
 
+class ProductionAssetInfo(TypedDict):
+    guid: int
+    name: str
+    text: str
+
+
+class AffectedChainInfo(TypedDict):
+    name: str
+    text: str
+    production_assets: List[ProductionAssetInfo]
+
+
 class LocalEffectJSON(TypedDict):
     title: str
     description: str
     milestones: List[MilestoneJSON]
+    affected_chains: Dict[str, AffectedChainInfo]
 
 
 class VenerationEffectJSON(TypedDict):
@@ -33,7 +45,8 @@ class VenerationEffectJSON(TypedDict):
 
 class ShrineItemJSON(TypedDict):
     guid: int
-    localized_description: str
+    title: str
+    # description: str
 
 
 class ShrineEffectJSON(TypedDict):
@@ -119,46 +132,45 @@ class PatronExtractor:
 
         return self.patrons
 
-    @cached_property
-    def production_chains_by_target(self) -> Dict[int, List[Asset]]:
+    def _get_text(self, asset: Asset) -> str:
+        """Safely extracts localized text from an asset."""
+        if hasattr(asset, "text") and asset.text:
+            return asset.text() if asset.text else str(asset.text)
+        return "N/A"
+
+    def _is_in_effect_targets(self, tgt: Asset, targets_to_match: Sequence[Asset]) -> bool:
+        """Recursively checks if a given target asset is found within a sequence of effect targets,
+        drilling down into nested AssetPoolBase structures when encountered.
         """
-        Pre-processes target assets from extracted patrons and maps each target's
-        GUID to a list of unique referencing ProductionChain assets.
-        """
-        mapping: Dict[int, Dict[int, Asset]] = {}
 
-        def _process_asset(asset: Asset):
-            if asset.guid in mapping:
-                return
-            mapping[asset.guid] = {}
+        def _has_asset_recursive(pool: Asset, target: Asset) -> bool:
+            if pool == target:
+                return True
+            if isinstance(pool, AssetPoolBase):
+                return any(_has_asset_recursive(sub, target) for sub in pool.asset_pool_list)
+            return False
 
-            # Trace references to look up ProductionChain templates
-            referenced_by = getattr(asset, "referenced_by", None)
-            if referenced_by:
-                for ref in referenced_by.values():
-                    source = getattr(ref, "source", None)
-                    if source:
-                        template = getattr(source, "template", None)
-                        if template and getattr(template, "name", None) == "ProductionChain":
-                            mapping[asset.guid][source.guid] = source
+        return any(_has_asset_recursive(et, tgt) for et in targets_to_match)
 
-            # Handle structural nested asset pools recursively
-            if isinstance(asset, AssetPoolBase):
-                for sub_asset in asset.asset_pool_list:
-                    _process_asset(sub_asset)
+    def _get_unique_chain_texts_for_effect(
+        self, effect_targets: Sequence[Asset], chains_mapping: Dict[Asset, Dict[int, Asset]]
+    ) -> List[str]:
+        """Helper to find unique production chain text values applicable ONLY to a specific effect's targets."""
+        unique_chain_texts: List[str] = []
 
-        # Crawl all local and global/exaltation targets across available patrons
-        for patron in self.patrons.values():
-            for effect in patron.local_effects:
-                if effect.asset and hasattr(effect.asset, "targets"):
-                    for target in effect.asset.targets:
-                        _process_asset(target)
-            for exalt in patron.exaltation_effects:
-                if exalt.asset and hasattr(exalt.asset, "targets"):
-                    for target in exalt.asset.targets:
-                        _process_asset(target)
+        # Use our clean reversed property to loop through active chains
+        for chain, targets_dict in chains_mapping.items():
+            # Check if any of this chain's associated targets match the targets active in this effect
+            has_active_target = any(
+                self._is_in_effect_targets(tgt_asset, effect_targets) for tgt_asset in targets_dict.values()
+            )
 
-        return {tgt_guid: list(chains.values()) for tgt_guid, chains in mapping.items()}
+            if has_active_target:
+                chain_text = self._get_text(chain)
+                if chain_text and chain_text != "N/A" and chain_text not in unique_chain_texts:
+                    unique_chain_texts.append(chain_text)
+
+        return unique_chain_texts
 
     # --- Printing Methods ---
 
@@ -193,7 +205,7 @@ class PatronExtractor:
         shrine_eff = patron.shrine_effect
         shrine_item = shrine_eff.shrines[0]  # Usually the roman one.
         print(f"Shrine: {shrine_eff.name} (GUID: {shrine_eff.guid})")
-        print(f"{shrine_item.localized_description}")
+        print(f"Name: {shrine_item.text}")
 
         print(f"{'-' * self.print_width}")
 
@@ -223,13 +235,32 @@ class PatronExtractor:
         print(f"{'=' * self.print_width}")
 
         for eff_index, effect_data in enumerate(patron.local_effects):
+            final_description = effect_data.description
+
+            # Resolve unique chain strings using the helper method ONLY for the first effect
+            if eff_index == 0:
+                effect_targets = (
+                    effect_data.asset.targets if (effect_data.asset and hasattr(effect_data.asset, "targets")) else []
+                )
+                unique_chain_texts = self._get_unique_chain_texts_for_effect(
+                    effect_targets, patron.production_chains_by_target
+                )
+
+                # Append the comma-separated strings to the printed description if unique chains exist
+                if unique_chain_texts:
+                    chains_string = ", ".join(unique_chain_texts)
+                    final_description = f"{final_description} {chains_string}"
+
             print(f"Title:       {effect_data.title}")
-            print(f"Description: {effect_data.description}")
+            print(f"Description: {final_description}")
 
             if effect_data.asset:
                 print(f"Asset GUID:  {effect_data.asset.guid}")
                 self._print_buffs(effect_data.asset.buffs)
-                self._print_targets(effect_data.asset.targets)
+
+                # Only pass the chains mapping for the first effect to keep target prints clean
+                current_chains_mapping = patron.production_chains_by_target if eff_index == 0 else {}
+                self._print_targets(effect_data.asset.targets, current_chains_mapping)
 
             print(f"{'-' * self.print_width}")
 
@@ -255,8 +286,15 @@ class PatronExtractor:
                     # Default generic asset. Do nothing in the meantime.
                     pass
 
-    def _print_targets(self, targets: Sequence[Asset], level: int = 0):
-        """Private method to process and print target assets and asset pools recursively."""
+    def _print_targets(self, targets: Sequence[Asset], chains_mapping: Dict[Asset, Dict[int, Asset]], level: int = 0):
+        """Private method to process and print target assets and asset pools recursively.
+
+        Args:
+            targets: The sequence of target assets to loop over.
+            chains_mapping: The patron's production_chains_by_target property dictionary
+                            (Dict[ProductionChainAsset, Dict[TargetGUID, TargetAsset]]).
+            level: Recursion depth formatting level.
+        """
         # Print the header only at the root level
         if level == 0:
             print(f"{'-' * self.print_width}")
@@ -274,7 +312,7 @@ class PatronExtractor:
 
             # 1. Handle Recursion First
             if isinstance(target_asset, AssetPoolBase):
-                self._print_targets(target_asset.asset_pool_list, level + 1)
+                self._print_targets(target_asset.asset_pool_list, chains_mapping, level + 1)
                 continue  # Move to next target in loop
 
             # 2. Handle Construction Costs (Common to Buildings and Units)
@@ -296,13 +334,11 @@ class PatronExtractor:
                 build_cat_name = target_asset.building_info.category_name
                 print(f"{indent}     |- [Category Name]: {build_cat_name}")
 
-            # 5. Handle Associated Production Chains Mapping Lookup
-            chains = self.production_chains_by_target.get(target_asset.guid, [])
-            for chain in chains:
-                chain_text = "N/A"
-                if hasattr(chain, "text") and chain.text:
-                    chain_text = chain.text() if callable(chain.text) else str(chain.text)
-                print(f"{indent}     |- [Production Chain]: {chain.name} (GUID: {chain.guid}) - {chain_text}")
+            # 5. Reverse-lookup associated Production Chains matching this specific target's GUID
+            for chain, targets_dict in chains_mapping.items():
+                if target_asset.guid in targets_dict:
+                    chain_text = self._get_text(chain)
+                    print(f"{indent}     |- [Production Chain]: {chain.name} (GUID: {chain.guid}) - {chain_text}")
 
     # --- Export Methods ---
 
@@ -351,15 +387,54 @@ class PatronExtractor:
                 final_url = f"{web_base_path}/{file_part}" if web_base_path else file_part
                 return final_url.replace("\\", "/")
 
-            # 2. Local Effects & Milestones
-            local_effects_json: List[LocalEffectJSON] = [
-                {
-                    "title": e.title,
-                    "description": e.description,
-                    "milestones": [{"devotion": m.devotion, "buff_scaling": m.buff_scaling} for m in e.milestones],
-                }
-                for e in patron.local_effects
-            ]
+            # 2. Local Effects & Associated Production Chains Map
+            local_effects_json: List[LocalEffectJSON] = []
+
+            for eff_idx, e in enumerate(patron.local_effects):
+                affected_chains_dict: Dict[str, AffectedChainInfo] = {}
+                final_description = e.description
+
+                # Only resolve production chain dependencies for the first local effect
+                if eff_idx == 0:
+                    effect_targets = e.asset.targets if (e.asset and hasattr(e.asset, "targets")) else []
+                    # Call the shared unique text filter method
+                    unique_chain_texts = self._get_unique_chain_texts_for_effect(
+                        effect_targets, patron.production_chains_by_target
+                    )
+
+                    if e.asset and hasattr(e.asset, "targets"):
+                        # Build individual structural objects for the affected_chains dictionary payload
+                        for chain, targets_dict in patron.production_chains_by_target.items():
+                            chain_guid_str = str(chain.guid)
+
+                            # Reused the class-level recursive lookup method here
+                            active_production_assets: List[ProductionAssetInfo] = [
+                                {"guid": tgt_asset.guid, "name": tgt_asset.name, "text": self._get_text(tgt_asset)}
+                                for tgt_asset in targets_dict.values()
+                                if self._is_in_effect_targets(tgt_asset, e.asset.targets)
+                            ]
+
+                            if active_production_assets:
+                                chain_info: AffectedChainInfo = {
+                                    "name": chain.name,
+                                    "text": self._get_text(chain),
+                                    "production_assets": active_production_assets,
+                                }
+                                affected_chains_dict[chain_guid_str] = chain_info
+
+                    # Append comma-separated list to description
+                    if unique_chain_texts:
+                        chains_string = ", ".join(unique_chain_texts)
+                        final_description = f"{final_description} {chains_string}"
+
+                local_effects_json.append(
+                    {
+                        "title": e.title,
+                        "description": final_description,
+                        "milestones": [{"devotion": m.devotion, "buff_scaling": m.buff_scaling} for m in e.milestones],
+                        "affected_chains": affected_chains_dict,
+                    }
+                )
 
             # 3. Veneration Effect
             veneration = patron.veneration_effect
@@ -370,7 +445,14 @@ class PatronExtractor:
             shrine_json: ShrineEffectJSON = {
                 "title": shrine.name,
                 "guid": shrine.guid,
-                "shrines": [{"guid": s.guid, "localized_description": s.localized_description} for s in shrine.shrines],
+                "shrines": [
+                    {
+                        "guid": s.guid,
+                        "title": self._get_text(s),
+                        # "description": s.localized_description
+                    }
+                    for s in shrine.shrines
+                ],
             }
 
             # 5. Exaltation Effects

@@ -3,10 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
-from typing import TYPE_CHECKING, List, cast
+from typing import TYPE_CHECKING, Dict, List, cast
 
 from assetextractor.parsing.core.assets import Asset
 from assetextractor.parsing.core.attributes import FileNameAttribute, WandImageProto
+from assetextractor.parsing.typed.asset_pool_base import AssetPoolBase
 
 if TYPE_CHECKING:
     from assetextractor.parsing.core.attributes import ListAttribute
@@ -186,7 +187,7 @@ class Patron(Asset, template_names="Patron"):
         wonder_effect = cast("Effect", self.find_value("Patron.Wonder"))
         wonder_desc_text = cast("Text | None", self.find_value("Patron.WonderDescription"))
 
-        title_text = cast("Text | None", wonder_effect.text)
+        title_text = wonder_effect.text
 
         return VenerationEffect(
             asset=wonder_effect,
@@ -210,3 +211,77 @@ class Patron(Asset, template_names="Patron"):
             shrines_list.append(building)
 
         return ShrineEffect(guid=shrine_asset.guid, name=shrine_asset.name, shrines=shrines_list)
+
+    @cached_property
+    def production_chains_by_target(self) -> Dict[Asset, Dict[int, Asset]]:
+        """
+        Processes targets and groups them by their parent Production Chain.
+        For Mines (GUID: 50225) and Quarries (GUID: 50608), it bypasses ProductionChain
+        lookup entirely and groups leaf assets directly under the pool container asset.
+
+        Returns:
+            Dict[Asset, Dict[int, Asset]]:
+                - Top level key: The unique ProductionChain or specific AssetPool asset object
+                - Inner level key: The target asset's integer GUID
+                - Inner value: The target asset object itself
+        """
+        mapping: Dict[Asset, Dict[int, Asset]] = {}
+
+        def _process_asset_production_chain(target_asset: Asset, current_pool_key: Asset | None = None):
+            pool_key = current_pool_key
+
+            # Intercept the specific Mine and Quarry pools to use them as top-level structural keys
+            if getattr(target_asset, "guid", None) in (50225, 50608):
+                pool_key = target_asset
+                if pool_key not in mapping:
+                    mapping[pool_key] = {}
+
+            if pool_key is not None:
+                # Group deep leaf production assets directly under the respective pool container key
+                if not isinstance(target_asset, AssetPoolBase):
+                    mapping[pool_key][target_asset.guid] = target_asset
+            else:
+                # Standard behavior: Trace references to find parent ProductionChain templates
+                referenced_by = getattr(target_asset, "referenced_by", None)
+                if referenced_by:
+                    for ref in referenced_by.values():
+                        source = getattr(ref, "source", None)
+                        if source:
+                            template = getattr(source, "template", None)
+                            if template and getattr(template, "name", None) == "ProductionChain":
+                                chain_asset = source
+
+                                # Initialize the chain entry if seen for the first time
+                                if chain_asset not in mapping:
+                                    mapping[chain_asset] = {}
+
+                                # Add the specific target asset under this chain group
+                                mapping[chain_asset][target_asset.guid] = target_asset
+
+            # Descend recursively through structural nested asset pools
+            if isinstance(target_asset, AssetPoolBase):
+                for sub_asset in target_asset.asset_pool_list:
+                    _process_asset_production_chain(sub_asset, pool_key)
+
+        # Crawl local and exaltation targets for this specific patron
+        for effect in self.local_effects:
+            if effect.asset and hasattr(effect.asset, "targets"):
+                for target in effect.asset.targets:
+                    _process_asset_production_chain(target)
+        for exalt in self.exaltation_effects:
+            if exalt.asset and hasattr(exalt.asset, "targets"):
+                for target in exalt.asset.targets:
+                    _process_asset_production_chain(target)
+
+        return mapping
+
+
+# The GUIDs of Mines and Quarries Assets with the asset pool list are:
+
+# - AssetPoolNamed -> Vulcanus Goods - GUID: 144801
+
+# Contains both Mines and Quarries:
+# - AssetPoolNamed -> Asset Pool Production All Mines - GUID: 50225
+# - AssetPoolNamed -> Asset Pool Production All Quarries - GUID: 50608
+
+# So I want only the assets from those two (Quarries and Mines) instead of the ProductionChain being referenced

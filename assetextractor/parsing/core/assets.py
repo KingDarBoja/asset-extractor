@@ -18,7 +18,7 @@ from assetextractor.parsing.core.attributes import (
 from assetextractor.parsing.core.common import ElementCache, Group, NamedElement, WeightedReference
 from assetextractor.parsing.core.properties import Attribute, DatasetCache, MetaPropertyCache
 from assetextractor.parsing.core.templates import NamedRefColT, Template, TemplateCache, TemplateGroup
-from assetextractor.parsing.core.texts import TextCache
+from assetextractor.parsing.core.texts import Text, TextCache
 from assetextractor.parsing.core.uitext import BuffUI, UITextCache
 
 if t.TYPE_CHECKING:
@@ -34,7 +34,7 @@ class Asset(NamedElement["AssetCache"]):
     def __init_subclass__(cls, template_names: list[str] | str | None = None, **kwargs: t.Any) -> None:
         super().__init_subclass__(**kwargs)
         if template_names is not None:
-            for name in ([template_names] if isinstance(template_names, str) else template_names):
+            for name in [template_names] if isinstance(template_names, str) else template_names:
                 Asset._registry[name] = cls
 
     @classmethod
@@ -56,7 +56,7 @@ class Asset(NamedElement["AssetCache"]):
 
         self.name: str = node.findtext("Values/Standard/Name") or ""
 
-        self.text = None
+        self.text: Text | None = None
         if text_id := node.findtext("Values/Text/OasisId"):
             with suppress(Exception):
                 self.text = cache.texts.get(int(text_id))
@@ -143,7 +143,7 @@ class Asset(NamedElement["AssetCache"]):
                 text_attr = self.find(path)
 
                 if isinstance(text_attr, TextAttribute) and text_attr() is not None:
-                    self.text = text_attr()
+                    self.text = t.cast("Text", text_attr())
                     return
 
     def resolve_inheritance(self, asset: Asset):
@@ -195,7 +195,7 @@ class Asset(NamedElement["AssetCache"]):
 
     def find_ref(self, path: str) -> Asset | None:
         """Follow path and return the referenced Asset, or None if missing or unresolved."""
-        return t.cast(Asset | None, self.find_value(path))
+        return t.cast("Asset | None", self.find_value(path))
 
     @property
     def icon(self) -> FileNameAttribute | None:
@@ -749,7 +749,7 @@ class AssetCache(ElementCache[t.Any]):
     @staticmethod
     def load(config: Config) -> AssetCache:
         """Loads the asset cache from the given config."""
-        import assetextractor.parsing.typed  # noqa: F401
+        import assetextractor.parsing.typed  # type: ignore # noqa: F401
 
         """Determine paths for 117 or 1800"""
         unpacked_path = config.cache_path
