@@ -14,6 +14,7 @@ from assetextractor.parsing.typed.patron import Patron
 
 if TYPE_CHECKING:
     from assetextractor.parsing.core.assets import Asset, AssetCache
+    from assetextractor.parsing.typed.effect import Effect
     from assetextractor.parsing.typed.factories import BuildingFactoriesGroup
     from assetextractor.parsing.typed.production_chain import ProductionChain, ProductionChainBase
 
@@ -381,6 +382,49 @@ class PatronExtractor:
                     chain_text = self._get_text(chain)
                     print(f"{indent}     |- [Production Chain]: {chain.name} (GUID: {chain.guid}) - {chain_text}")
 
+    def _build_affected_chains_and_description(
+        self, patron: Patron, effect: Effect, initial_description: str
+    ) -> tuple[Dict[str, AffectedChainInfo], str]:
+        """
+        Private helper method to resolve the affected production chains layout dictionary
+        and build the localized description text listing for a given effect.
+        """
+        affected_chains_dict: Dict[str, AffectedChainInfo] = {}
+        final_description = initial_description
+
+        effect_targets = effect.targets if (effect and hasattr(effect, "targets")) else []
+        unique_chain_texts = self._get_unique_chain_texts_for_effect(effect_targets, patron.production_chains_by_target)
+
+        for chain, targets_dict in patron.production_chains_by_target.items():
+            chain_guid_str = str(chain.guid)
+
+            # Gather matched building assets active for this effect's targets
+            active_production_assets: List[ProductionAssetInfo] = [
+                {"guid": tgt_asset.guid, "name": tgt_asset.name, "text": self._get_text(tgt_asset)}
+                for tgt_asset in targets_dict.values()
+                if self._is_in_effect_targets(tgt_asset, effect_targets)
+            ]
+
+            if active_production_assets:
+                active_guids = {asset["guid"] for asset in active_production_assets}
+                required_guids = self._get_chain_building_guids(chain)
+
+                # Check if it satisfies the structural completeness verification parameters
+                if required_guids and all(b_guid in active_guids for b_guid in required_guids):
+                    chain_info: AffectedChainInfo = {
+                        "name": chain.name,
+                        "text": self._get_text(chain),
+                        "production_assets": active_production_assets,
+                    }
+                    affected_chains_dict[chain_guid_str] = chain_info
+
+        # Append comma-separated chain strings if present
+        if unique_chain_texts:
+            chains_string = ", ".join(unique_chain_texts)
+            final_description = f"{final_description} {chains_string}"
+
+        return affected_chains_dict, final_description
+
     # --- Export Methods ---
 
     def to_json_dict(self, web_base_path: str | None = None, flatten: bool = True) -> Dict[str, PatronItemJSON]:
@@ -436,41 +480,10 @@ class PatronExtractor:
 
                 # Only resolve production chain dependencies for the first local effect
                 if eff_idx == 0:
-                    effect_targets = e.asset.targets if (e.asset and hasattr(e.asset, "targets")) else []
-                    # Call the shared unique text filter method
-                    unique_chain_texts = self._get_unique_chain_texts_for_effect(
-                        effect_targets, patron.production_chains_by_target
+                    # Leverage the cleanly isolated private helper method
+                    affected_chains_dict, final_description = self._build_affected_chains_and_description(
+                        patron=patron, effect=e.asset, initial_description=e.description
                     )
-
-                    if e.asset and hasattr(e.asset, "targets"):
-                        # Build individual structural objects for the affected_chains dictionary payload
-                        for chain, targets_dict in patron.production_chains_by_target.items():
-                            chain_guid_str = str(chain.guid)
-
-                            # Reused the class-level recursive lookup method here
-                            active_production_assets: List[ProductionAssetInfo] = [
-                                {"guid": tgt_asset.guid, "name": tgt_asset.name, "text": self._get_text(tgt_asset)}
-                                for tgt_asset in targets_dict.values()
-                                if self._is_in_effect_targets(tgt_asset, e.asset.targets)
-                            ]
-
-                            if active_production_assets:
-                                active_guids = {asset["guid"] for asset in active_production_assets}
-                                required_guids = self._get_chain_building_guids(chain)
-
-                                # Only commit chain info to output dictionary if it satisfies completeness requirements
-                                if required_guids and all(b_guid in active_guids for b_guid in required_guids):
-                                    chain_info: AffectedChainInfo = {
-                                        "name": chain.name,
-                                        "text": self._get_text(chain),
-                                        "production_assets": active_production_assets,
-                                    }
-                                    affected_chains_dict[chain_guid_str] = chain_info
-
-                    # Append comma-separated list to description
-                    if unique_chain_texts:
-                        chains_string = ", ".join(unique_chain_texts)
-                        final_description = f"{final_description} {chains_string}"
 
                 local_effects_json.append(
                     {
