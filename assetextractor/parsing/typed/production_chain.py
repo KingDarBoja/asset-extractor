@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, List, cast
 from assetextractor.parsing.core.assets import Asset
 
 if TYPE_CHECKING:
+    from assetextractor.parsing.core.texts import Text
     from assetextractor.parsing.typed.factories import BuildingFactoriesGroup
 
 
@@ -22,6 +23,13 @@ class ProductionChainBase:
 
 class ProductionChain(Asset, template_names="ProductionChain"):
     """Specialized Asset for 'ProductionChain' with pre-computed data."""
+
+    @cached_property
+    def localized_description(self) -> str:
+        """Returns the ingame description of this building."""
+        info_desc = cast("Text | None", self.find_value("Standard.InfoDescription"))
+
+        return info_desc() if info_desc else "No Description"
 
     @cached_property
     def production_chain(self) -> ProductionChainBase:

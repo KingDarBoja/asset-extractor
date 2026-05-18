@@ -40,6 +40,8 @@ dev = [
     "uv>=0.6.9",
     "numpy-pydantic-types",
     "pandera",
+    "matplotlib>=3.10.1",
+    "networkx>=3.4.2",
 ]
 
 
