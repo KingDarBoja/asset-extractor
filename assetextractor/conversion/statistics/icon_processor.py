@@ -79,6 +79,40 @@ class IconProcessor:
 
         # Join and strip extension
         return str(Path(*relevant_parts).with_suffix(""))
+    
+    @classmethod
+    def get_final_url(
+        cls,
+        raw_path: str | None,
+        canon_name: str | None,
+        web_base_path: str | None = None,
+        flatten: bool = True,
+        default_name: str = "icon"
+    ) -> str:
+        """
+        Standardizes the generation of an asset's web-ready icon URL path.
+        This mirrors the save_image output folder/file naming structure.
+
+        Args:
+            raw_path: Original path to the asset.
+            canon_name: Sanitized canonical name.
+            web_base_path: Optional server/hosting base directory prefix.
+            flatten: If True, returns a flat filename under web_base_path.
+                     If False, retains the nested folder structure.
+            default_name: Fallback name if both raw_path and canon_name are missing.
+        """
+        if not raw_path:
+            return ""
+
+        if flatten:
+            file_part = f"{canon_name or default_name}.webp"
+        else:
+            mirrored = cls.get_mirrored_path(raw_path) or default_name
+            file_part = f"{mirrored}.webp"
+
+        final_url = f"{web_base_path}/{file_part}" if web_base_path else file_part
+        return final_url.replace("\\", "/")
+
 
     @classmethod
     def get_icon_package(cls, asset: Asset, include_image: bool = False) -> IconData:

@@ -139,9 +139,7 @@ class PatronExtractor:
 
     def _get_text(self, asset: Asset) -> str:
         """Safely extracts localized text from an asset."""
-        if hasattr(asset, "text") and asset.text:
-            return asset.text() if asset.text else str(asset.text)
-        return "N/A"
+        return asset.text() if asset.text else "N/A"
 
     def _is_in_effect_targets(self, tgt: BuildingFactoriesGroup, targets_to_match: Sequence[Asset]) -> bool:
         """
@@ -228,7 +226,7 @@ class PatronExtractor:
         # Patron property is correctly typed as ChainMapping
         chains_mapping: ChainMapping = effect.production_chains_by_target
 
-        effect_targets = effect.targets if (effect and hasattr(effect, "targets")) else []
+        effect_targets = effect.targets  # This is List[AssetPoolNamed] cached_property.
         unique_chain_texts = self._get_unique_chain_texts_for_effect(effect_targets, chains_mapping)
 
         for chain, targets_dict in chains_mapping.items():
@@ -457,21 +455,6 @@ class PatronExtractor:
             title = patron_title() if patron_title else "No Title"
             description = patron_description() if patron_description else "No Description"
 
-            # 1.C. Dynamic URL Logic matching the export structure.
-            def _get_final_url(raw_path: str | None, canon_name: str | None) -> str:
-                if not raw_path:
-                    return ""
-
-                # Determine the filename/path part (matches save_image logic).
-                if flatten:
-                    file_part = f"{canon_name or patron.canonical_name}.webp"
-                else:
-                    # Use the mirrored path which preserves icon_content/features/etc
-                    file_part = f"{IconProcessor.get_mirrored_path(raw_path)}.webp"
-
-                final_url = f"{web_base_path}/{file_part}" if web_base_path else file_part
-                return final_url.replace("\\", "/")
-
             # 2. Local Effects & Associated Production Chains Map
             local_effects_json: List[LocalEffectJSON] = []
 
@@ -514,8 +497,20 @@ class PatronExtractor:
 
             # 6. Portraits
             portraits_json: PortraitJSON = {
-                "big": _get_final_url(patron.portraits.big.path, patron.portraits.big.name),
-                "small": _get_final_url(patron.portraits.small.path, patron.portraits.small.name),
+                "big": IconProcessor.get_final_url(
+                    raw_path=patron.portraits.big.path,
+                    canon_name=patron.portraits.big.name,
+                    web_base_path=web_base_path,
+                    flatten=flatten,
+                    default_name=patron.canonical_name,
+                ),
+                "small": IconProcessor.get_final_url(
+                    raw_path=patron.portraits.small.path,
+                    canon_name=patron.portraits.small.name,
+                    web_base_path=web_base_path,
+                    flatten=flatten,
+                    default_name=patron.canonical_name,
+                ),
             }
 
             export_data[str(guid)] = {
@@ -523,7 +518,13 @@ class PatronExtractor:
                 "canon_name": patron.canonical_name,
                 "title": title,
                 "description": description,
-                "icon_url": _get_final_url(patron_icon["path"], patron_icon["canon_name"]),
+                "icon_url": IconProcessor.get_final_url(
+                    raw_path=patron_icon["path"],
+                    canon_name=patron_icon["canon_name"],
+                    web_base_path=web_base_path,
+                    flatten=flatten,
+                    default_name=patron.canonical_name,
+                ),
                 "canon_icon_name": patron_icon["canon_name"] or "",
                 "local_effects": local_effects_json,
                 "veneration_effect": veneration_json,
@@ -548,12 +549,25 @@ class PatronExtractor:
             json.dump(data, f, indent=4)
         print(f"Successfully exported {len(data)} patrons to {file_path}")
 
-    def export_all_patron_assets(self, output_base: Path | str, quality: int = 75, flatten: bool = False):
+    def export_all_patron_assets(
+        self,
+        output_base: Path | str,
+        quality: int = 75,
+        resize: tuple[int, int] | None = (128, 128),
+        flatten: bool = False,
+    ):
         """
         Exports all patron-related assets.
-        - Patron/Shrine/Effect Icons: 128x128.
-        - Big Portraits: 2496px -> 512x512.
-        - Small Portraits: 704px -> 128x128.
+
+        Args:
+            output_base: The base physical directory where icons will be exported.
+            quality: Compression ratio parameter for WebP (1-100). Default is 75.
+            resize: Sizing dimension tuple. Default is (128, 128).
+            flatten: True to save directly under output_base, False to preserve hierarchy.
+
+        - Patron/Shrine/Effect Icons: 128x128. (Default resize).
+        - Big Portraits: 2496px -> 512x512. (Fixed resize).
+        - Small Portraits: 704px -> 128x128. (Fixed resize).
         """
         output_path = Path(output_base)
         standard_assets: List[Asset] = []
@@ -569,13 +583,13 @@ class PatronExtractor:
                 standard_assets.append(exalt.asset)
 
         # Batch export all standard icons at 128x128
-        print(f"Exporting {len(standard_assets)} standard icons (128x128)...")
+        print(f"Exporting {len(standard_assets)} standard icons...")
         IconProcessor.export_icons(
             assets=standard_assets,
             output_base=output_path,
             flatten=flatten,
             quality=quality,
-            resize=(128, 128),
+            resize=resize,
             use_canonical_name=True,
         )
 
