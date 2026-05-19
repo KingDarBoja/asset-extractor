@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Sequence, TypedDict, Union, cast
 
@@ -26,28 +27,46 @@ ChainMapping = Dict[ChainKey, Dict[int, "BuildingFactoriesGroup"]]
 # --- Helper JSON Structures ---
 
 
-class MilestoneJSON(TypedDict):
-    devotion: int
-    buff_scaling: int
-
-
-class ProductionAssetInfo(TypedDict):
+@dataclass(frozen=True)
+class ProductionAssetInfo:
+    asset: BuildingFactoriesGroup
     guid: int
     name: str
     text: str
 
 
-class AffectedChainInfo(TypedDict):
+@dataclass(frozen=True)
+class AffectedChainInfo:
     name: str
     text: str
+    asset: ChainKey
     production_assets: List[ProductionAssetInfo]
+
+
+class MilestoneJSON(TypedDict):
+    devotion: int
+    buff_scaling: int
+
+
+class ProductionAssetInfoJSON(TypedDict):
+    guid: int
+    name: str
+    text: str
+    icon_url: str
+
+
+class AffectedChainInfoJSON(TypedDict):
+    name: str
+    text: str
+    icon_url: str
+    production_assets: List[ProductionAssetInfoJSON]
 
 
 class LocalEffectJSON(TypedDict):
     title: str
     description: str
     milestones: List[MilestoneJSON]
-    affected_chains: Dict[str, AffectedChainInfo]
+    affected_chains: Dict[str, AffectedChainInfoJSON]
 
 
 class VenerationEffectJSON(TypedDict):
@@ -58,6 +77,7 @@ class VenerationEffectJSON(TypedDict):
 class ShrineItemJSON(TypedDict):
     guid: int
     title: str
+    icon_url: str
 
 
 class ShrineEffectJSON(TypedDict):
@@ -234,13 +254,15 @@ class PatronExtractor:
 
             # Gather matched building assets active for this effect's targets
             active_production_assets: List[ProductionAssetInfo] = [
-                {"guid": tgt_asset.guid, "name": tgt_asset.name, "text": self._get_text(tgt_asset)}
+                ProductionAssetInfo(
+                    guid=tgt_asset.guid, name=tgt_asset.name, text=self._get_text(tgt_asset), asset=tgt_asset
+                )
                 for tgt_asset in targets_dict.values()
                 if self._is_in_effect_targets(tgt_asset, effect_targets)
             ]
 
             if active_production_assets:
-                active_guids = {asset["guid"] for asset in active_production_assets}
+                active_guids = {asset.guid for asset in active_production_assets}
 
                 # Check if it satisfies the structural completeness verification parameters
                 is_complete = False
@@ -251,12 +273,12 @@ class PatronExtractor:
                     is_complete = required_guids and all(b_guid in active_guids for b_guid in required_guids)
 
                 if is_complete:
-                    chain_info: AffectedChainInfo = {
-                        "name": chain.name,
-                        "text": self._get_text(chain),
-                        "production_assets": active_production_assets,
-                    }
-                    affected_chains_dict[chain_guid_str] = chain_info
+                    affected_chains_dict[chain_guid_str] = AffectedChainInfo(
+                        asset=chain,
+                        name=chain.name,
+                        text=self._get_text(chain),
+                        production_assets=active_production_assets,
+                    )
 
         # Append comma-separated chain strings if present
         if unique_chain_texts:
@@ -469,12 +491,44 @@ class PatronExtractor:
                         effect=e.asset, initial_description=e.description
                     )
 
+                affected_chains_json: Dict[str, AffectedChainInfoJSON] = {}
+                for chain_guid, chain_val in affected_chains_dict.items():
+                    chain_icon = IconProcessor.get_icon_package(chain_val.asset)
+                    chain_icon_path = IconProcessor.get_final_url(
+                        raw_path=chain_icon["path"],
+                        canon_name=chain_icon["canon_name"],
+                        web_base_path=web_base_path,
+                        flatten=flatten,
+                        default_name=patron.canonical_name,
+                    )
+
+                    affected_chains_json[chain_guid] = {
+                        "name": chain_val.name,
+                        "text": chain_val.text,
+                        "icon_url": chain_icon_path,
+                        "production_assets": [],
+                    }
+
+                    for pa in chain_val.production_assets:
+                        pa_icon = IconProcessor.get_icon_package(pa.asset)
+                        pa_icon_path = IconProcessor.get_final_url(
+                            raw_path=pa_icon["path"],
+                            canon_name=pa_icon["canon_name"],
+                            web_base_path=web_base_path,
+                            flatten=flatten,
+                            default_name=patron.canonical_name,
+                        )
+
+                        affected_chains_json[chain_guid]["production_assets"].append(
+                            {"guid": pa.guid, "name": pa.name, "text": pa.text, "icon_url": pa_icon_path}
+                        )
+
                 local_effects_json.append(
                     {
                         "title": e.title,
                         "description": final_description,
                         "milestones": [{"devotion": m.devotion, "buff_scaling": m.buff_scaling} for m in e.milestones],
-                        "affected_chains": affected_chains_dict,
+                        "affected_chains": affected_chains_json,
                     }
                 )
 
@@ -484,11 +538,21 @@ class PatronExtractor:
 
             # 4. Shrine Effect
             shrine = patron.shrine_effect
-            shrine_json: ShrineEffectJSON = {
-                "title": shrine.name,
-                "guid": shrine.guid,
-                "shrines": [{"guid": s.guid, "title": self._get_text(s)} for s in shrine.shrines],
-            }
+            shrine_json: ShrineEffectJSON = {"title": shrine.name, "guid": shrine.guid, "shrines": []}
+
+            for shrine_asset in shrine.shrines:
+                shrine_icon = IconProcessor.get_icon_package(shrine_asset)
+                shrine_icon_path = IconProcessor.get_final_url(
+                    raw_path=shrine_icon["path"],
+                    canon_name=shrine_icon["canon_name"],
+                    web_base_path=web_base_path,
+                    flatten=flatten,
+                    default_name=patron.canonical_name,
+                )
+
+                shrine_json["shrines"].append(
+                    {"guid": shrine_asset.guid, "title": self._get_text(shrine_asset), "icon_url": shrine_icon_path}
+                )
 
             # 5. Exaltation Effects
             exaltation_json: List[ExaltationEffectJSON] = [
