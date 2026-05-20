@@ -140,7 +140,7 @@ class PatronExtractor:
         Extracts all Patron assets and saves them into self.patrons.
 
         Returns:
-            Dict[int, Patron]: A map of Patron GUID to Patron instance.
+            Dict[int, Patron]: A map of GUID to Patron instance.
         """
         self._prepare_converter()
 
@@ -385,7 +385,7 @@ class PatronExtractor:
             if eff_index < len(patron.local_effects) - 1:
                 print(f"{'-' * self.print_width}")
 
-    def _print_buffs(self, buffs: List[Asset]):
+    def _print_buffs(self, buffs: Sequence[Asset]):
         """Private method to process and print buff assets."""
         print(f"{'-' * self.print_width}")
         print(f"Buffs: {len(buffs)}")
@@ -411,7 +411,7 @@ class PatronExtractor:
 
         for target_index, target_asset in enumerate(targets, 1):
             if target_index > 1:
-                print(f"{'-' * self.DEFAULT_PRINT_WIDTH}")
+                print(f"{'-' * self.print_width}")
 
             # Print the current target with proper indentation
             print(f"{indent}  |- {target_index} Target: {target_asset.name} (GUID: {target_asset.guid})")
