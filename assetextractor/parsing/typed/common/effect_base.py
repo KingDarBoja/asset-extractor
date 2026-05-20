@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Dict, List, Sequence, Union, cast
 from assetextractor.parsing.core.assets import Asset
 from assetextractor.parsing.typed.asset_pool_named import AssetPoolNamed
 from assetextractor.parsing.typed.buffs import BuildingBuff, ShipBuff
+from assetextractor.parsing.typed.buildings import AssetBuildingBase
 from assetextractor.parsing.typed.common.asset_pool_base import AssetPoolBase
 from assetextractor.parsing.typed.common.building import AssetWithBuilding
 from assetextractor.parsing.typed.common.cost import AssetWithCosts
@@ -28,7 +29,7 @@ ChainKey = Union["ProductionChain", "AssetPoolBase", "AssetFactoryBase"]
 ChainMapping = Dict[ChainKey, Dict[int, "AssetFactoryBase"]]
 
 # Shared type definition for targets.
-TargetKey = Union[AssetPoolNamed, AssetFactoryBase]
+TargetKey = Union[AssetPoolNamed, AssetFactoryBase, AssetBuildingBase]
 
 
 @dataclass(frozen=True)
@@ -91,7 +92,7 @@ class AssetWithEffect(Asset):
         out: List[TargetKey] = []
         for entry in cast("ListAttribute", self.find("Effect.Targets")):
             target = entry.find_ref("GUID")
-            if isinstance(target, (AssetPoolNamed, AssetFactoryBase)):
+            if isinstance(target, (AssetPoolNamed, AssetFactoryBase, AssetBuildingBase)):
                 out.append(target)
         return out
 
@@ -99,70 +100,83 @@ class AssetWithEffect(Asset):
         """Safely extracts localized text from an asset."""
         return asset.text() if asset.text else def_text
 
-    def print_buffs(self, buffs: Sequence[Asset]):
-        """Private method to process and print buff assets."""
-        print(f"{'-' * 100}")
-        print(f"Buffs: {len(buffs)}")
+    def print_buffs(self, buffs: Sequence[Asset], prefix: str = "") -> None:
+        """Processes and prints buff assets with clean box-drawing tree lines."""
+        if not buffs:
+            return
 
-        for buff_index, buff_asset in enumerate(buffs, 1):
-            print(f"  |- {buff_index} Buff - {buff_asset.name} (GUID: {buff_asset.guid})")
+        if prefix == "":
+            print(f"{'─' * 100}")
+            print(f"Buffs ({len(buffs)}):")
 
-            # 1. Handle Building Upgrades.
+        for idx, buff_asset in enumerate(buffs, 1):
+            is_last = idx == len(buffs)
+            connector = "└── " if is_last else "├── "
+            child_prefix = prefix + ("    " if is_last else "│   ")
+
+            print(f"{prefix}{connector}Buff #{idx}: {buff_asset.name} (GUID: {buff_asset.guid})")
+
+            # Handle internal property upgrades if present
             if isinstance(buff_asset, BuildingBuff):
-                buff_asset.print_upgrade_info(indent="     ")
-                buff_asset.print_residence_upgrade_info(indent="     ")
+                if hasattr(buff_asset, "print_upgrade_info"):
+                    buff_asset.print_upgrade_info(indent=child_prefix)
+                if hasattr(buff_asset, "print_residence_upgrade_info"):
+                    buff_asset.print_residence_upgrade_info(indent=child_prefix)
 
-    def print_targets(self, targets: Sequence[Asset], chains_mapping: ChainMapping, level: int = 0) -> None:
-        """Private method to process and print target assets and asset pools recursively.
+    def print_targets(self, targets: Sequence[Asset], chains_mapping: ChainMapping, prefix: str = "") -> None:
+        """Processes and prints target assets and structural asset pools recursively.
 
         Args:
             targets: The sequence of target assets to loop over.
             chains_mapping: The patron's production_chains_by_target property dictionary.
-            level: Recursion depth formatting level.
+            prefix: Continuous box-drawing indentation string tracking the current tree level.
         """
-        # Print the header only at the root level
-        if level == 0:
-            print(f"{'-' * 100}")
-            print(f"Targets: {len(targets)}")
+        if not targets:
+            return
 
-        # Calculate indentation based on recursion depth
-        indent = "  " * level
+        if prefix == "":
+            print(f"{'─' * 100}")
+            print(f"Targets ({len(targets)}):")
 
-        for target_index, target_asset in enumerate(targets, 1):
-            if target_index > 1:
-                print(f"{'-' * 100}")
+        for idx, target_asset in enumerate(targets, 1):
+            is_last = idx == len(targets)
+            connector = "└── " if is_last else "├── "
+            child_prefix = prefix + ("    " if is_last else "│   ")
 
-            # Print the current target with proper indentation
-            print(f"{indent}  |- {target_index} Target: {target_asset.name} (GUID: {target_asset.guid})")
+            print(f"{prefix}{connector}Target #{idx}: {target_asset.name} (GUID: {target_asset.guid})")
 
-            # 1. Handle Recursion First
-            if isinstance(target_asset, AssetPoolBase):
-                self.print_targets(target_asset.asset_pool_list, chains_mapping, level + 1)
-                continue  # Move to next target in loop
+            # Collect available properties to maintain clean node endpoints (└── vs ├──)
+            sub_rows: List[str] = []
 
-            # 2. Handle Construction Costs (Common to Buildings and Units).
+            # 1. Construction Costs
             if isinstance(target_asset, AssetWithCosts):
                 costs = target_asset.formatted_costs
                 if costs:
-                    cost_str = ", ".join([f"{c.amount} {c.ingredient}" for c in costs])
-                    print(f"{indent}     |- [Costs]: {cost_str}")
+                    sub_rows.append(f"[Costs]: {', '.join([f'{c.amount} {c.ingredient}' for c in costs])}")
 
-            # 3. Handle Maintenance (Specific to Units/Ships).
+            # 2. Maintenance Costs
             if isinstance(target_asset, AssetWithMaintenance):
                 m_costs = target_asset.formatted_maintenance_costs
                 if m_costs:
-                    m_str = ", ".join([f"{m.amount} {m.product}" for m in m_costs])
-                    print(f"{indent}     |- [Maintenance]: {m_str}")
+                    sub_rows.append(f"[Maintenance]: {', '.join([f'{m.amount} {m.product}' for m in m_costs])}")
 
-            # 4. Handle the list of affected buildings / units assets from this
-            #    target.
+            # 3. Building/Category Metadata
             if isinstance(target_asset, AssetWithBuilding):
-                build_cat_name = target_asset.building_info.category_name
-                print(f"{indent}     |- [Category Name]: {build_cat_name}")
+                sub_rows.append(f"[Category Name]: {target_asset.building_info.category_name}")
 
-            # 5. Reverse-lookup associated Production Chains matching this
-            #    specific target's GUID
+            # 4. Associated Production Chain Mappings
             for chain, targets_dict in chains_mapping.items():
                 if target_asset.guid in targets_dict:
                     chain_text = self._get_text(chain)
-                    print(f"{indent}     |- [Production Chain]: {chain.name} (GUID: {chain.guid}) - {chain_text}")
+                    sub_rows.append(f"[Production Chain]: {chain.name} (GUID: {chain.guid}) - {chain_text}")
+
+            # Print collected sub-rows with proper dangling branch resolution
+            for s_idx, row_text in enumerate(sub_rows, 1):
+                # An attribute row is only the true end node if there is no recursive AssetPool under it
+                is_last_row = (s_idx == len(sub_rows)) and not isinstance(target_asset, AssetPoolBase)
+                row_connector = "└── " if is_last_row else "├── "
+                print(f"{child_prefix}{row_connector}{row_text}")
+
+            # 5. Handle AssetPool Recursion Last (Threads perfectly below the target parent)
+            if isinstance(target_asset, AssetPoolBase):
+                self.print_targets(target_asset.asset_pool_list, chains_mapping, prefix=child_prefix)

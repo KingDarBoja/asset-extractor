@@ -3,7 +3,7 @@ from __future__ import annotations
 from functools import cached_property
 from typing import TYPE_CHECKING, cast
 
-from assetextractor.parsing.typed.buildings.buildings import AssetBuildingBase
+from assetextractor.parsing.typed.buildings import AssetBuildingBase
 
 if TYPE_CHECKING:
     from assetextractor.parsing.core.texts import Text

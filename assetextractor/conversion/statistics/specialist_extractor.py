@@ -144,8 +144,13 @@ class SpecialistExtractor:
 
         # Specialists don't use the localized chain matching structure of Patrons,
         # so we pass an empty dict safely to comply with AssetWithEffect's print signature.
-        item.print_buffs(item.buffs)
-        item.print_targets(item.targets, {})
+
+        # We pass a starting branch to frame the buffs
+        item.print_buffs(item.buffs, prefix="     ")
+
+        # If we have a production chain mapping context (e.g., for Patrons/Effects), pass it here;
+        # otherwise, pass an empty dictionary `{}` for specialists
+        item.print_targets(item.targets, {}, prefix="     ")
 
         print(f"{'=' * self.print_width}")
 

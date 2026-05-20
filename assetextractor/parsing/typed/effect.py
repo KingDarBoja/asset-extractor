@@ -160,7 +160,7 @@ class Effect(AssetWithEffect, template_names="Effect"):
                     pool_buildings = [b for b in pool_named_asset.asset_pool_list if isinstance(b, AssetFactoryBase)]
                     _process_flat_buildings(pool_buildings)
 
-            elif isinstance(target_pool, AssetFactoryBase):  # type: ignore
+            elif isinstance(target_pool, AssetFactoryBase):
                 # Save flat AssetFactoryBase targets to process collectively
                 flat_targeted_buildings.append(target_pool)
 

@@ -117,12 +117,27 @@ class AssetWithUpgradeBase(Asset):
         # Filter out inactive properties
         active_entries = [entry for entry in attributes_list if entry[1] != 0.0]
 
-        # Scale centered boundary structure relative to indent overhead
-        print(f"{'-' * width}")
-        print(f" {title_prefix} Attributes (GUID: {self.guid}) ")
-        for name, raw_val, fmt_val in active_entries:
-            print(f"{indent}  |- {f'[{name}]:':<15} {fmt_val:<10} (Raw: {raw_val})")
-        print(f"{'-' * width}")
+        if not active_entries:
+            return
+
+        if indent:
+            # We are rendering nested within an active tree hierarchy
+            # Print a neat sub-header block connected directly to the parent tree line
+            print(f"{indent}├── [{title_prefix} Attributes]:")
+            sub_indent = indent + "│   "
+            for i, (name, raw_val, fmt_val) in enumerate(active_entries):
+                is_last_item = i == len(active_entries) - 1
+                connector = "└── " if is_last_item else "├── "
+                print(f"{sub_indent}{connector}{f'[{name}]:':<15} {fmt_val:<10} (Raw: {raw_val})")
+        else:
+            # Standalone layout format utilizing clean, double-lined box drawing characters
+            border = "═" * width
+            print(f"╔{border}╗")
+            print(f"║ {title_prefix} Attributes (GUID: {self.guid})".ljust(width + 1) + "║")
+            print(f"╠{border}╣")
+            for name, raw_val, fmt_val in active_entries:
+                print(f"║  |- {f'[{name}]:':<15} {fmt_val:<10} (Raw: {raw_val})".ljust(width + 1) + "║")
+            print(f"╚{border}╝")
 
 
 @dataclass(frozen=True)
