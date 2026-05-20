@@ -3,8 +3,8 @@ from __future__ import annotations
 from functools import cached_property
 from typing import TYPE_CHECKING, cast
 
-from assetextractor.parsing.typed.cost import AssetWithCosts
-from assetextractor.parsing.typed.maintenance import AssetWithMaintenance
+from assetextractor.parsing.typed.common.cost import AssetWithCosts
+from assetextractor.parsing.typed.common.maintenance import AssetWithMaintenance
 
 if TYPE_CHECKING:
     from assetextractor.parsing.core.texts import Text

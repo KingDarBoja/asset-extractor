@@ -7,10 +7,10 @@ from typing import TYPE_CHECKING, Dict, List, Sequence, TypedDict, Union, cast
 
 from assetextractor.conversion.statistics.icon_processor import IconProcessor
 from assetextractor.parsing.core.texts import StandardTextConverter, Text
-from assetextractor.parsing.typed.asset_pool_base import AssetPoolBase
-from assetextractor.parsing.typed.building import AssetWithBuilding
-from assetextractor.parsing.typed.cost import AssetWithCosts
-from assetextractor.parsing.typed.maintenance import AssetWithMaintenance
+from assetextractor.parsing.typed.common.asset_pool_base import AssetPoolBase
+from assetextractor.parsing.typed.common.building import AssetWithBuilding
+from assetextractor.parsing.typed.common.cost import AssetWithCosts
+from assetextractor.parsing.typed.common.maintenance import AssetWithMaintenance
 from assetextractor.parsing.typed.patron import Patron
 from assetextractor.parsing.typed.production_chain import ProductionChain
 

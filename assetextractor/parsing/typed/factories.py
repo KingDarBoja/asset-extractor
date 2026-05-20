@@ -6,10 +6,10 @@ These comes from 'Objects' -> 'Buildings' -> 'Factories'
 
 from __future__ import annotations
 
-from assetextractor.parsing.typed.building import AssetWithBuilding
-from assetextractor.parsing.typed.cost import AssetWithCosts
-from assetextractor.parsing.typed.factory_base import AssetWithFactoryBase
-from assetextractor.parsing.typed.maintenance import AssetWithMaintenance
+from assetextractor.parsing.typed.common.building import AssetWithBuilding
+from assetextractor.parsing.typed.common.cost import AssetWithCosts
+from assetextractor.parsing.typed.common.factory_base import AssetWithFactoryBase
+from assetextractor.parsing.typed.common.maintenance import AssetWithMaintenance
 
 
 class BuildingFactoriesGroup(AssetWithCosts, AssetWithMaintenance, AssetWithBuilding, AssetWithFactoryBase):

@@ -6,8 +6,8 @@ These comes from 'Objects' -> 'Buildings' -> 'Harbour'
 
 from __future__ import annotations
 
-from assetextractor.parsing.typed.cost import AssetWithCosts
-from assetextractor.parsing.typed.maintenance import AssetWithMaintenance
+from assetextractor.parsing.typed.common.cost import AssetWithCosts
+from assetextractor.parsing.typed.common.maintenance import AssetWithMaintenance
 
 
 class BuildingHarborGroup(AssetWithCosts, AssetWithMaintenance):

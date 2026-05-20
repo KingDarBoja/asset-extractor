@@ -5,7 +5,7 @@ from functools import cached_property
 from typing import TYPE_CHECKING, List, cast
 
 from assetextractor.parsing.core.assets import Asset
-from assetextractor.parsing.typed.enums import BuildingType, Region
+from assetextractor.parsing.typed.common.enums import BuildingType, Region
 
 if TYPE_CHECKING:
     from assetextractor.parsing.core.texts import Text

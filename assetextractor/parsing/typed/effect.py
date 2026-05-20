@@ -4,8 +4,8 @@ from functools import cached_property
 from typing import TYPE_CHECKING, Dict, List, Sequence, cast
 
 from assetextractor.parsing.core.assets import Asset
-from assetextractor.parsing.typed.asset_pool_base import AssetPoolBase
 from assetextractor.parsing.typed.asset_pool_named import AssetPoolNamed
+from assetextractor.parsing.typed.common.asset_pool_base import AssetPoolBase
 from assetextractor.parsing.typed.factories import BuildingFactoriesGroup
 from assetextractor.parsing.typed.production_chain import ProductionChain, ProductionChainBase
 

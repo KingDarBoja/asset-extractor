@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from assetextractor.parsing.typed.asset_pool_base import AssetPoolBase
+from assetextractor.parsing.typed.common.asset_pool_base import AssetPoolBase
 
 
 class AssetPool(AssetPoolBase, template_names="AssetPool"):
