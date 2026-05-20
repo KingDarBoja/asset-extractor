@@ -12,7 +12,7 @@ from assetextractor.parsing.typed.common.factory_base import AssetWithFactoryBas
 from assetextractor.parsing.typed.common.maintenance import AssetWithMaintenance
 
 
-class BuildingFactoriesGroup(AssetWithCosts, AssetWithMaintenance, AssetWithBuilding, AssetWithFactoryBase):
+class AssetFactoryBase(AssetWithCosts, AssetWithMaintenance, AssetWithBuilding, AssetWithFactoryBase):
     """
     Base group for assets categorized under 'Objects' -> 'Buildings' -> 'Factories'.
 
@@ -25,7 +25,7 @@ class BuildingFactoriesGroup(AssetWithCosts, AssetWithMaintenance, AssetWithBuil
     pass
 
 
-class Monument(BuildingFactoriesGroup, template_names="Monument"):
+class Monument(AssetFactoryBase, template_names="Monument"):
     """
     Specialized Asset for 'Monument' with pre-computed data.
 
@@ -36,7 +36,7 @@ class Monument(BuildingFactoriesGroup, template_names="Monument"):
     pass
 
 
-class Production(BuildingFactoriesGroup, template_names="Production"):
+class Production(AssetFactoryBase, template_names="Production"):
     """
     Specialized Asset for 'Production' with pre-computed data.
 
@@ -47,7 +47,7 @@ class Production(BuildingFactoriesGroup, template_names="Production"):
     pass
 
 
-class ProductionArea(BuildingFactoriesGroup, template_names="Production Area"):
+class ProductionArea(AssetFactoryBase, template_names="Production Area"):
     """
     Specialized Asset for 'Production Area' with pre-computed data.
 
@@ -59,7 +59,7 @@ class ProductionArea(BuildingFactoriesGroup, template_names="Production Area"):
     pass
 
 
-class ProductionField(BuildingFactoriesGroup, template_names="Production Field"):
+class ProductionField(AssetFactoryBase, template_names="Production Field"):
     """
     Specialized Asset for 'Production Field' with pre-computed data.
 
@@ -70,7 +70,7 @@ class ProductionField(BuildingFactoriesGroup, template_names="Production Field")
     pass
 
 
-class ProductionMarsh(BuildingFactoriesGroup, template_names="Production Marsh"):
+class ProductionMarsh(AssetFactoryBase, template_names="Production Marsh"):
     """
     Specialized Asset for 'Production Marsh' with pre-computed data.
 
@@ -81,7 +81,7 @@ class ProductionMarsh(BuildingFactoriesGroup, template_names="Production Marsh")
     pass
 
 
-class ProductionMarshArea(BuildingFactoriesGroup, template_names="Production Marsh Area"):
+class ProductionMarshArea(AssetFactoryBase, template_names="Production Marsh Area"):
     """
     Specialized Asset for 'Production Marsh Area' with pre-computed data.
 
@@ -92,7 +92,7 @@ class ProductionMarshArea(BuildingFactoriesGroup, template_names="Production Mar
     pass
 
 
-class ProductionMarshPasture(BuildingFactoriesGroup, template_names="Production Marsh Pasture"):
+class ProductionMarshPasture(AssetFactoryBase, template_names="Production Marsh Pasture"):
     """
     Specialized Asset for 'Production Marsh Pasture' with pre-computed data.
 
@@ -103,7 +103,7 @@ class ProductionMarshPasture(BuildingFactoriesGroup, template_names="Production 
     pass
 
 
-class SlotFactoryBuilding7(BuildingFactoriesGroup, template_names="SlotFactoryBuilding7"):
+class SlotFactoryBuilding7(AssetFactoryBase, template_names="SlotFactoryBuilding7"):
     """
     Specialized Asset for 'SlotFactoryBuilding7' with pre-computed data.
 
@@ -114,7 +114,7 @@ class SlotFactoryBuilding7(BuildingFactoriesGroup, template_names="SlotFactoryBu
     pass
 
 
-class ProductionModuleSilo(BuildingFactoriesGroup, template_names="ProductionModuleSilo"):
+class ProductionModuleSilo(AssetFactoryBase, template_names="ProductionModuleSilo"):
     """
     Specialized Asset for 'ProductionModuleSilo' with pre-computed data.
 

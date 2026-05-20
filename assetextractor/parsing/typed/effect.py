@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Dict, List, Sequence
 from assetextractor.parsing.typed.asset_pool_named import AssetPoolNamed
 from assetextractor.parsing.typed.common.asset_pool_base import AssetPoolBase
 from assetextractor.parsing.typed.common.effect_base import AssetWithEffect
-from assetextractor.parsing.typed.factories import BuildingFactoriesGroup
+from assetextractor.parsing.typed.factories import AssetFactoryBase
 from assetextractor.parsing.typed.production_chain import ProductionChain, ProductionChainBase
 
 if TYPE_CHECKING:
@@ -19,7 +19,7 @@ class Effect(AssetWithEffect, template_names="Effect"):
     @cached_property
     def production_chains_by_target(
         self,
-    ) -> Dict[ProductionChain | AssetPoolBase | BuildingFactoriesGroup, Dict[int, BuildingFactoriesGroup]]:
+    ) -> Dict[ProductionChain | AssetPoolBase | AssetFactoryBase, Dict[int, AssetFactoryBase]]:
         """
         Dynamically clusters this effect's targets structurally.
         - Identifies structurally active complete production chains in the target pools first.
@@ -27,10 +27,10 @@ class Effect(AssetWithEffect, template_names="Effect"):
           parent chain contexts via factory product output/input profiles.
         - Standalone components (such as side fuel buildings) fall through safely.
         """
-        mapping: Dict[ProductionChain | AssetPoolBase | BuildingFactoriesGroup, Dict[int, BuildingFactoriesGroup]] = {}
+        mapping: Dict[ProductionChain | AssetPoolBase | AssetFactoryBase, Dict[int, AssetFactoryBase]] = {}
 
-        def _get_chain_buildings(chain: ProductionChain) -> List[BuildingFactoriesGroup]:
-            buildings: List[BuildingFactoriesGroup] = []
+        def _get_chain_buildings(chain: ProductionChain) -> List[AssetFactoryBase]:
+            buildings: List[AssetFactoryBase] = []
 
             def _traverse(node: ProductionChainBase):
                 if node.building:
@@ -52,7 +52,7 @@ class Effect(AssetWithEffect, template_names="Effect"):
                         chains.append(source)
             return chains
 
-        def _process_flat_buildings(pool_buildings: List[BuildingFactoriesGroup]) -> None:
+        def _process_flat_buildings(pool_buildings: List[AssetFactoryBase]) -> None:
             """
             Clusters a flat sequence of building factory groups by looking for
             structural production chains, regional variants, and individual singletons.
@@ -122,8 +122,8 @@ class Effect(AssetWithEffect, template_names="Effect"):
                         mapping[building] = {}
                     mapping[building][building.guid] = building
 
-        # Temporary collection for direct BuildingFactoriesGroup targets
-        flat_targeted_buildings: List[BuildingFactoriesGroup] = []
+        # Temporary collection for direct AssetFactoryBase targets
+        flat_targeted_buildings: List[AssetFactoryBase] = []
 
         for target_pool in self.targets:
             if isinstance(target_pool, AssetPoolNamed):
@@ -133,9 +133,7 @@ class Effect(AssetWithEffect, template_names="Effect"):
                 if nested_pools:
                     # Vulcan Case: Nested sub-pools context (Mines & Quarries)
                     for active_pool in nested_pools:
-                        pool_buildings = [
-                            b for b in active_pool.asset_pool_list if isinstance(b, BuildingFactoriesGroup)
-                        ]
+                        pool_buildings = [b for b in active_pool.asset_pool_list if isinstance(b, AssetFactoryBase)]
                         pool_guids = {b.guid for b in pool_buildings}
 
                         for building in pool_buildings:
@@ -159,16 +157,14 @@ class Effect(AssetWithEffect, template_names="Effect"):
                                 mapping[active_pool][building.guid] = building
                 else:
                     # Neptune/Ceres/Minerva/Mars Case: Direct building pool listings
-                    pool_buildings = [
-                        b for b in pool_named_asset.asset_pool_list if isinstance(b, BuildingFactoriesGroup)
-                    ]
+                    pool_buildings = [b for b in pool_named_asset.asset_pool_list if isinstance(b, AssetFactoryBase)]
                     _process_flat_buildings(pool_buildings)
 
-            elif isinstance(target_pool, BuildingFactoriesGroup):  # type: ignore
-                # Save flat BuildingFactoriesGroup targets to process collectively
+            elif isinstance(target_pool, AssetFactoryBase):  # type: ignore
+                # Save flat AssetFactoryBase targets to process collectively
                 flat_targeted_buildings.append(target_pool)
 
-        # Process all flat-targeted BuildingFactoriesGroup elements together
+        # Process all flat-targeted AssetFactoryBase elements together
         if flat_targeted_buildings:
             _process_flat_buildings(flat_targeted_buildings)
 
@@ -185,10 +181,10 @@ class Effect(AssetWithEffect, template_names="Effect"):
         if not affected_chains or all(not targets for targets in affected_chains.values()):
             return
 
-        def _is_in_effect_targets(tgt: BuildingFactoriesGroup, targets_to_match: Sequence[Asset]) -> bool:
+        def _is_in_effect_targets(tgt: AssetFactoryBase, targets_to_match: Sequence[Asset]) -> bool:
             """Helper to recursively check if building is part of the effect target pools."""
 
-            def _has_asset_recursive(current: Asset, target: BuildingFactoriesGroup) -> bool:
+            def _has_asset_recursive(current: Asset, target: AssetFactoryBase) -> bool:
                 if current == target:
                     return True
                 if isinstance(current, AssetPoolBase):
@@ -217,7 +213,7 @@ class Effect(AssetWithEffect, template_names="Effect"):
 
         # Build Scenario B collections beforehand to check if Scenario B printing is empty
         scenario_b_output: List[
-            tuple[ProductionChain | AssetPoolBase | BuildingFactoriesGroup, List[BuildingFactoriesGroup], List[int]]
+            tuple[ProductionChain | AssetPoolBase | AssetFactoryBase, List[AssetFactoryBase], List[int]]
         ] = []
         for chain, targets in affected_chains.items():
             active_production_assets = [

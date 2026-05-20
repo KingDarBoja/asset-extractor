@@ -3,14 +3,13 @@ from __future__ import annotations
 from functools import cached_property
 from typing import TYPE_CHECKING, cast
 
-from assetextractor.parsing.typed.common.cost import AssetWithCosts
-from assetextractor.parsing.typed.common.maintenance import AssetWithMaintenance
+from assetextractor.parsing.typed.buildings.buildings import AssetBuildingBase
 
 if TYPE_CHECKING:
     from assetextractor.parsing.core.texts import Text
 
 
-class MiniInstitutionBuilding(AssetWithCosts, AssetWithMaintenance, template_names="MiniInstitutionBuilding"):
+class MiniInstitutionBuilding(AssetBuildingBase, template_names="MiniInstitutionBuilding"):
     """
     Specialized Asset for 'MiniInstitutionBuilding' with pre-computed data.
 

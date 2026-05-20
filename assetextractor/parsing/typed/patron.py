@@ -12,8 +12,8 @@ if TYPE_CHECKING:
     from assetextractor.parsing.core.attributes import ListAttribute
     from assetextractor.parsing.core.texts import Text
     from assetextractor.parsing.typed.asset_pool_named import AssetPoolNamed
+    from assetextractor.parsing.typed.buildings.mini_institution_building import MiniInstitutionBuilding
     from assetextractor.parsing.typed.effect import Effect
-    from assetextractor.parsing.typed.mini_institution_building import MiniInstitutionBuilding
 
 
 @dataclass(frozen=True)

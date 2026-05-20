@@ -17,19 +17,19 @@ from assetextractor.parsing.typed.production_chain import ProductionChain
 if TYPE_CHECKING:
     from assetextractor.parsing.core.assets import Asset, AssetCache
     from assetextractor.parsing.typed.effect import Effect
-    from assetextractor.parsing.typed.factories import BuildingFactoriesGroup
+    from assetextractor.parsing.typed.factories import AssetFactoryBase
     from assetextractor.parsing.typed.production_chain import ProductionChainBase
 
 # Define a shared type for the production chain mapping keys to avoid repetition and errors
-ChainKey = Union["ProductionChain", "AssetPoolBase", "BuildingFactoriesGroup"]
-ChainMapping = Dict[ChainKey, Dict[int, "BuildingFactoriesGroup"]]
+ChainKey = Union["ProductionChain", "AssetPoolBase", "AssetFactoryBase"]
+ChainMapping = Dict[ChainKey, Dict[int, "AssetFactoryBase"]]
 
 # --- Helper JSON Structures ---
 
 
 @dataclass(frozen=True)
 class ProductionAssetInfo:
-    asset: BuildingFactoriesGroup
+    asset: AssetFactoryBase
     guid: int
     name: str
     text: str
@@ -161,13 +161,13 @@ class PatronExtractor:
         """Safely extracts localized text from an asset."""
         return asset.text() if asset.text else "N/A"
 
-    def _is_in_effect_targets(self, tgt: BuildingFactoriesGroup, targets_to_match: Sequence[Asset]) -> bool:
+    def _is_in_effect_targets(self, tgt: AssetFactoryBase, targets_to_match: Sequence[Asset]) -> bool:
         """
         Recursively checks if a given target asset is found within a sequence of effect targets,
         drilling down into nested AssetPoolBase structures when encountered.
         """
 
-        def _has_asset_recursive(current: Asset, target: BuildingFactoriesGroup) -> bool:
+        def _has_asset_recursive(current: Asset, target: AssetFactoryBase) -> bool:
             if current == target:
                 return True
             if isinstance(current, AssetPoolBase):

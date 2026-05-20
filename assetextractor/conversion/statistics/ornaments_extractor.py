@@ -5,8 +5,8 @@ from typing import Dict, List, TypedDict
 from assetextractor.conversion.statistics.icon_processor import IconProcessor
 from assetextractor.parsing.core.assets import Asset, AssetCache
 from assetextractor.parsing.core.texts import StandardTextConverter
+from assetextractor.parsing.typed.buildings.ornamental_building import OrnamentalBuilding
 from assetextractor.parsing.typed.construction_category import ConstructionCategory
-from assetextractor.parsing.typed.ornamental_building import OrnamentalBuilding
 
 
 class ConstructionGroupJSON(TypedDict):
@@ -129,7 +129,7 @@ class OrnamentsExtractor:
 
                 # Safely access properties (PolygonObjects will return 0/[])
                 if ornament.costs:
-                    print(f"       Cost: {int(ornament.costs[0])} denarii")
+                    print(f"       Cost: {int(ornament.formatted_costs[0].amount)} denarii")
                 else:
                     print(f"       Cost: 0 denarii")  # noqa: F541
 
@@ -163,7 +163,7 @@ class OrnamentsExtractor:
                 icon_package = IconProcessor.get_icon_package(ornament)
 
                 # Using pre-computed costs from OrnamentalBuilding class
-                cost_value = ornament.costs[0] if ornament.costs else 0
+                cost_value = ornament.formatted_costs[0].amount if ornament.costs else 0
 
                 # Build the OrnamentItemJSON structure
                 guid_key = str(ornament.guid)
@@ -174,7 +174,7 @@ class OrnamentsExtractor:
                     "description": ornament.localized_description,
                     "image_url": icon_package["image_url"] or "",
                     "prestige": ornament.prestige,
-                    "cost": int(cost_value),
+                    "cost": cost_value,
                     "construction_group": sub_info,  # Immediate Parent (e.g., 'Benches')
                     "top_level_group": top_info,  # Root Parent (e.g., 'Classic')
                 }

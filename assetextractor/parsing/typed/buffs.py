@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from assetextractor.parsing.core.assets import Asset
+from assetextractor.parsing.typed.common.upgrades import AssetWithBuildingUpgrade, AssetWithResidenceUpgrade
 
 
-class BuildingBuff(Asset, template_names="BuildingBuff"):
+class BuildingBuff(AssetWithBuildingUpgrade, AssetWithResidenceUpgrade, template_names="BuildingBuff"):
     """Specialized Asset for 'BuildingBuff'."""
 
     pass

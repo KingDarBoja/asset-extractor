@@ -117,7 +117,7 @@ class SpecialistExtractor:
             if specialist := all_specialists.get(guid):
                 self._print_single_specialist(specialist)
             else:
-                print(f"Patron with GUID {guid} not found in current results.")
+                print(f"Specialist with GUID {guid} not found in current results.")
         else:
             for guid in sorted(all_specialists.keys()):
                 self._print_single_specialist(all_specialists[guid])

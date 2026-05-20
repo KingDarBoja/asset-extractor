@@ -8,12 +8,12 @@ from assetextractor.parsing.core.assets import Asset
 
 if TYPE_CHECKING:
     from assetextractor.parsing.core.texts import Text
-    from assetextractor.parsing.typed.factories import BuildingFactoriesGroup
+    from assetextractor.parsing.typed.factories import AssetFactoryBase
 
 
 @dataclass(frozen=True)
 class ProductionChainBase:
-    building: BuildingFactoriesGroup
+    building: AssetFactoryBase
     """The final output production building. Obtained from
     'ProductionChain.Building'. This can be nested as each tier has its own
     'Building' asset."""
@@ -34,24 +34,24 @@ class ProductionChain(Asset, template_names="ProductionChain"):
     @cached_property
     def production_chain(self) -> ProductionChainBase:
         # 1. Get the top-level final output building of this entire chain
-        final_building_asset = cast("BuildingFactoriesGroup", self.find_ref("ProductionChain.Building"))
+        final_building_asset = cast("AssetFactoryBase", self.find_ref("ProductionChain.Building"))
 
         # 2. Extract the starting root Tier 1 nodes
         raw_tier_one = self.find_value("ProductionChain.Tier1")
-        tier_one_nodes = cast("List[BuildingFactoriesGroup]", raw_tier_one) if raw_tier_one else []
+        tier_one_nodes = cast("List[AssetFactoryBase]", raw_tier_one) if raw_tier_one else []
 
         # 3. Hand off execution to the recursive parser starting at level 1
         final_tier = self._parse_tier_nodes(tier_one_nodes, level=1)
 
         return ProductionChainBase(building=final_building_asset, tier=final_tier)
 
-    def _parse_tier_nodes(self, nodes: List[BuildingFactoriesGroup], level: int) -> List[ProductionChainBase]:
+    def _parse_tier_nodes(self, nodes: List[AssetFactoryBase], level: int) -> List[ProductionChainBase]:
         """Recursively evaluates inner production chain supplier branches."""
         parsed_elements: List[ProductionChainBase] = []
 
         for item in nodes:
             # Resolve the individual supplier factory building reference for this item node
-            building_ref = cast("BuildingFactoriesGroup", item.find_ref("Building"))
+            building_ref = cast("AssetFactoryBase", item.find_ref("Building"))
             if not building_ref:
                 continue
 
@@ -61,7 +61,7 @@ class ProductionChain(Asset, template_names="ProductionChain"):
 
             # Look up if deeper sub-nodes are nested beneath this element
             raw_next_nodes = item.find_value(next_tier_key)
-            next_nodes_list = cast("List[BuildingFactoriesGroup] | None", raw_next_nodes)
+            next_nodes_list = cast("List[AssetFactoryBase] | None", raw_next_nodes)
 
             # If inner elements are found, dive recursively; otherwise, terminate the branch cleanly
             sub_tier = self._parse_tier_nodes(next_nodes_list, next_level) if next_nodes_list else []

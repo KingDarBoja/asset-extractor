@@ -12,7 +12,7 @@ from assetextractor.parsing.typed.common.building import AssetWithBuilding
 from assetextractor.parsing.typed.common.cost import AssetWithCosts
 from assetextractor.parsing.typed.common.enums import BuffCategory, ScopeVisualization
 from assetextractor.parsing.typed.common.maintenance import AssetWithMaintenance
-from assetextractor.parsing.typed.factories import BuildingFactoriesGroup
+from assetextractor.parsing.typed.factories import AssetFactoryBase
 
 if TYPE_CHECKING:
     from assetextractor.parsing.core.attributes import ListAttribute
@@ -24,11 +24,11 @@ BuffKey = Union["BuildingBuff", "ShipBuff"]
 """TODO: Add the other asset classes into this list (if applies)."""
 
 # Shared type definition for the production chain mapping keys to avoid repetition and errors
-ChainKey = Union["ProductionChain", "AssetPoolBase", "BuildingFactoriesGroup"]
-ChainMapping = Dict[ChainKey, Dict[int, "BuildingFactoriesGroup"]]
+ChainKey = Union["ProductionChain", "AssetPoolBase", "AssetFactoryBase"]
+ChainMapping = Dict[ChainKey, Dict[int, "AssetFactoryBase"]]
 
 # Shared type definition for targets.
-TargetKey = Union[AssetPoolNamed, BuildingFactoriesGroup]
+TargetKey = Union[AssetPoolNamed, AssetFactoryBase]
 
 
 @dataclass(frozen=True)
@@ -91,7 +91,7 @@ class AssetWithEffect(Asset):
         out: List[TargetKey] = []
         for entry in cast("ListAttribute", self.find("Effect.Targets")):
             target = entry.find_ref("GUID")
-            if isinstance(target, (AssetPoolNamed, BuildingFactoriesGroup)):
+            if isinstance(target, (AssetPoolNamed, AssetFactoryBase)):
                 out.append(target)
         return out
 
@@ -106,6 +106,11 @@ class AssetWithEffect(Asset):
 
         for buff_index, buff_asset in enumerate(buffs, 1):
             print(f"  |- {buff_index} Buff - {buff_asset.name} (GUID: {buff_asset.guid})")
+
+            # 1. Handle Building Upgrades.
+            if isinstance(buff_asset, BuildingBuff):
+                buff_asset.print_upgrade_info(indent="     ")
+                buff_asset.print_residence_upgrade_info(indent="     ")
 
     def print_targets(self, targets: Sequence[Asset], chains_mapping: ChainMapping, level: int = 0) -> None:
         """Private method to process and print target assets and asset pools recursively.
