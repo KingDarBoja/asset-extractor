@@ -12,11 +12,23 @@ from assetextractor.parsing.typed.common.building import AssetWithBuilding
 from assetextractor.parsing.typed.common.cost import AssetWithCosts
 from assetextractor.parsing.typed.common.enums import BuffCategory, ScopeVisualization
 from assetextractor.parsing.typed.common.maintenance import AssetWithMaintenance
+from assetextractor.parsing.typed.factories import BuildingFactoriesGroup
 
 if TYPE_CHECKING:
     from assetextractor.parsing.core.attributes import ListAttribute
-    from assetextractor.parsing.typed.factories import BuildingFactoriesGroup
     from assetextractor.parsing.typed.production_chain import ProductionChain
+
+
+# Shared type definition for all valid buff template assets.
+BuffKey = Union["BuildingBuff", "ShipBuff"]
+"""TODO: Add the other asset classes into this list (if applies)."""
+
+# Shared type definition for the production chain mapping keys to avoid repetition and errors
+ChainKey = Union["ProductionChain", "AssetPoolBase", "BuildingFactoriesGroup"]
+ChainMapping = Dict[ChainKey, Dict[int, "BuildingFactoriesGroup"]]
+
+# Shared type definition for targets.
+TargetKey = Union[AssetPoolNamed, BuildingFactoriesGroup]
 
 
 @dataclass(frozen=True)
@@ -32,17 +44,8 @@ class EffectInfo:
     buffs: List[BuffKey]
     """List of buffs applied to the targets."""
 
-    targets: List[AssetPoolNamed]
+    targets: List[TargetKey]
     """List of targets to apply the buffs."""
-
-
-# Shared type definition for all valid buff template assets.
-BuffKey = Union["BuildingBuff", "ShipBuff"]
-"""TODO: Add the other asset classes into this list (if applies)."""
-
-# Shared type definition for the production chain mapping keys to avoid repetition and errors
-ChainKey = Union["ProductionChain", "AssetPoolBase", "BuildingFactoriesGroup"]
-ChainMapping = Dict[ChainKey, Dict[int, "BuildingFactoriesGroup"]]
 
 
 class AssetWithEffect(Asset):
@@ -80,15 +83,15 @@ class AssetWithEffect(Asset):
         return out
 
     @cached_property
-    def targets(self) -> List[AssetPoolNamed]:
+    def targets(self) -> List[TargetKey]:
         """
         Return the list of 'AssetPoolNamed' asset targets whose members are
         impacted by this effect.
         """
-        out: List[AssetPoolNamed] = []
+        out: List[TargetKey] = []
         for entry in cast("ListAttribute", self.find("Effect.Targets")):
             target = entry.find_ref("GUID")
-            if isinstance(target, AssetPoolNamed):
+            if isinstance(target, (AssetPoolNamed, BuildingFactoriesGroup)):
                 out.append(target)
         return out
 
@@ -132,26 +135,28 @@ class AssetWithEffect(Asset):
                 self.print_targets(target_asset.asset_pool_list, chains_mapping, level + 1)
                 continue  # Move to next target in loop
 
-            # 2. Handle Construction Costs (Common to Buildings and Units)
+            # 2. Handle Construction Costs (Common to Buildings and Units).
             if isinstance(target_asset, AssetWithCosts):
                 costs = target_asset.formatted_costs
                 if costs:
                     cost_str = ", ".join([f"{c.amount} {c.ingredient}" for c in costs])
                     print(f"{indent}     |- [Costs]: {cost_str}")
 
-            # 3. Handle Maintenance (Specific to Units/Ships)
+            # 3. Handle Maintenance (Specific to Units/Ships).
             if isinstance(target_asset, AssetWithMaintenance):
                 m_costs = target_asset.formatted_maintenance_costs
                 if m_costs:
                     m_str = ", ".join([f"{m.amount} {m.product}" for m in m_costs])
                     print(f"{indent}     |- [Maintenance]: {m_str}")
 
-            # 4. Handle the list of affected buildings / units assets from this target.
+            # 4. Handle the list of affected buildings / units assets from this
+            #    target.
             if isinstance(target_asset, AssetWithBuilding):
                 build_cat_name = target_asset.building_info.category_name
                 print(f"{indent}     |- [Category Name]: {build_cat_name}")
 
-            # 5. Reverse-lookup associated Production Chains matching this specific target's GUID
+            # 5. Reverse-lookup associated Production Chains matching this
+            #    specific target's GUID
             for chain, targets_dict in chains_mapping.items():
                 if target_asset.guid in targets_dict:
                     chain_text = self._get_text(chain)
