@@ -1,0 +1,74 @@
+from dataclasses import dataclass
+from functools import cached_property
+from typing import TYPE_CHECKING, Dict, cast
+
+from assetextractor.parsing.typed.common.upgrades import (
+    AdditionalAttributesInfo,
+    AssetWithUpgradeBase,
+    FormattedAttributesInfo,
+)
+
+if TYPE_CHECKING:
+    from assetextractor.parsing.core.attributes import DictAttribute
+
+
+@dataclass(frozen=True)
+class AreaNeedAttributeBuffInfo:
+    """The processed 'ResidenceUpgrade' properties as one single object."""
+
+    additional_bonus_attributes: AdditionalAttributesInfo
+    """Specific attributes from array dataset 'NeedAttributeType'. Comes from
+    'AreaNeedAttributeBuff.BonusAttributes'."""
+
+    formatted_bonus_attributes: FormattedAttributesInfo
+    """The formatted representation of each attribute, utilizing UI text mapping rules."""
+
+
+class AreaBuff(AssetWithUpgradeBase, template_names="AreaBuff"):
+    """Specialized Asset for 'AreaBuff'."""
+
+    @cached_property
+    def area_need_attribute_buff_info(self) -> AreaNeedAttributeBuffInfo:
+        """The structured 'AreaNeedAttributeBuff' data containing modified resource amounts."""
+        raw_attributes_dict = cast(
+            "Dict[str, DictAttribute | None]", self.find_value("AreaNeedAttributeBuff.BonusAttributes")
+        )
+
+        # Extract values and determine percentage statuses using shared class method
+        population_val, population_is_percent = self._get_val_and_percent(raw_attributes_dict, "Population")
+        money_val, money_is_percent = self._get_val_and_percent(raw_attributes_dict, "Money")
+        happiness_val, happiness_is_percent = self._get_val_and_percent(raw_attributes_dict, "Happiness")
+        health_val, health_is_percent = self._get_val_and_percent(raw_attributes_dict, "Health")
+        fire_safety_val, fire_safety_is_percent = self._get_val_and_percent(raw_attributes_dict, "FireSafety")
+        belief_val, belief_is_percent = self._get_val_and_percent(raw_attributes_dict, "Belief")
+        knowledge_val, knowledge_is_percent = self._get_val_and_percent(raw_attributes_dict, "Knowledge")
+        prestige_val, prestige_is_percent = self._get_val_and_percent(raw_attributes_dict, "Prestige")
+
+        # Build raw numeric dataset
+        add_attributes = AdditionalAttributesInfo(
+            population=population_val,
+            money=money_val,
+            happiness=happiness_val,
+            health=health_val,
+            fire_safety=fire_safety_val,
+            belief=belief_val,
+            knowledge=knowledge_val,
+            prestige=prestige_val,
+        )
+
+        # Build UI-ready formatted string dataset using shared class formatting method
+        formatted_attributes = FormattedAttributesInfo(
+            population=self._format_attribute(population_val, population_is_percent),
+            money=self._format_attribute(money_val, money_is_percent),
+            happiness=self._format_attribute(happiness_val, happiness_is_percent),
+            health=self._format_attribute(health_val, health_is_percent),
+            fire_safety=self._format_attribute(fire_safety_val, fire_safety_is_percent),
+            belief=self._format_attribute(belief_val, belief_is_percent),
+            knowledge=self._format_attribute(knowledge_val, knowledge_is_percent),
+            prestige=self._format_attribute(prestige_val, prestige_is_percent),
+        )
+
+        return AreaNeedAttributeBuffInfo(
+            additional_bonus_attributes=add_attributes, formatted_bonus_attributes=formatted_attributes
+        )
+

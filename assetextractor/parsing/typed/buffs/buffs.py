@@ -16,18 +16,6 @@ class BuildingBuff(
     pass
 
 
-class ShipBuff(Asset, template_names="ShipBuff"):
-    """Specialized Asset for 'ShipBuff'."""
-
-    pass
-
-
-class AreaBuff(Asset, template_names="AreaBuff"):
-    """Specialized Asset for 'AreaBuff'."""
-
-    pass
-
-
 class MetaBuff(Asset, template_names="MetaBuff"):
     """Specialized Asset for 'MetaBuff'."""
 

@@ -43,7 +43,10 @@ class AssetWithUpgradeBase(Asset):
     """Common base class providing shared extraction and formatting utilities for upgrades."""
 
     def _get_val_and_percent(
-        self, raw_attributes_dict: Dict[str, DictAttribute | None], attr_key: str
+        self,
+        raw_attributes_dict: Dict[str, DictAttribute | None],
+        attr_key: str,
+        value_keys: tuple[str, ...] = ("AmountOrPercent", "ValueOrPercent"),
     ) -> tuple[float, bool]:
         """Safely extracts raw float values and automatically detects if they represent percentages."""
         attr = raw_attributes_dict.get(attr_key)
@@ -51,14 +54,20 @@ class AssetWithUpgradeBase(Asset):
         is_percent = False
 
         if attr is not None:
-            amount_or_percent_attr = attr.find("AmountOrPercent")
-            if amount_or_percent_attr is not None:
-                raw_val = amount_or_percent_attr()
+            # Look up the first matching value key inside the DictAttribute (e.g. AmountOrPercent or ValueOrPercent)
+            value_attr = None
+            for key in value_keys:
+                value_attr = attr.find(key)
+                if value_attr is not None:
+                    break
+
+            if value_attr is not None:
+                raw_val = value_attr()
                 if raw_val is not None:
                     val = float(raw_val)
 
                 # Inspect string representation from the parser
-                attr_str = str(amount_or_percent_attr)
+                attr_str = str(value_attr)
 
                 if "%" in attr_str:
                     is_percent = True
@@ -404,6 +413,230 @@ class AssetWithFactoryUpgrade(AssetWithUpgradeBase):
             border = "═" * width
             print(f"╔{border}╗")
             print(f"║ Factory Upgrade Attributes (GUID: {self.guid})".ljust(width + 1) + "║")
+            print(f"╠{border}╣")
+            for name, raw_val, fmt_val in active_entries:
+                print(f"║  |- {f'[{name}]:':<15} {fmt_val:<10} (Raw: {raw_val})".ljust(width + 1) + "║")
+            print(f"╚{border}╝")
+
+
+# ==========================================
+# ===== Upgrades for "ShipBuff" Assets =====
+# ==========================================
+
+
+@dataclass(frozen=True)
+class HealthUpgradeInfo:
+    """The processed 'HealthUpgrade' properties as one single object."""
+
+    base_health_upgrade: int
+    """Baseline raw HP increase/decrease."""
+
+    self_heal_upgrade: int
+    """Regeneration rate of ship."""
+
+    self_heal_paused_time_if_attacked_upgrade: int
+    """Delay cooldown (seconds) before self healing restarts after taking damage."""
+
+    passive_ruin_repair_speed_upgrade: int
+    """Passive repair speed multiplier applied to damaged structures."""
+
+    encamped_unit_self_heal_multiplier_upgrade: int
+    """Extra multiplier of self healing inside friendly territories."""
+
+
+class AssetWithHealthUpgrade(AssetWithUpgradeBase):
+    """
+    Base class for assets that contain a 'HealthUpgrade' property.
+    Consolidates the extraction, formatting, and printing of ship health modifications.
+    """
+
+    @cached_property
+    def health_upgrade_info(self) -> HealthUpgradeInfo:
+        """The structured 'HealthUpgrade' data."""
+        base_hp = cast("int | None", self.find_value("HealthUpgrade.BaseHealthUpgrade")) or 0
+        self_heal = cast("int | None", self.find_value("HealthUpgrade.SelfHealUpgrade")) or 0
+        paused_time = cast("int | None", self.find_value("HealthUpgrade.SelfHealPausedTimeIfAttackedUpgrade")) or 0
+        repair_speed = cast("int | None", self.find_value("HealthUpgrade.PassiveRuinRepairSpeedUpgrade")) or 0
+        encamped_mult = cast("int | None", self.find_value("HealthUpgrade.EncampedUnitSelfHealMultiplierUpgrade")) or 0
+
+        return HealthUpgradeInfo(
+            base_health_upgrade=base_hp,
+            self_heal_upgrade=self_heal,
+            self_heal_paused_time_if_attacked_upgrade=paused_time,
+            passive_ruin_repair_speed_upgrade=repair_speed,
+            encamped_unit_self_heal_multiplier_upgrade=encamped_mult,
+        )
+
+    def print_health_upgrade_info(self, width: int = 100, indent: str = "") -> None:
+        """Helper method to format and print HealthUpgrade values in both tree or boxed layouts."""
+        info = self.health_upgrade_info
+        if not info:
+            return
+
+        active_entries: List[tuple[str, int, str]] = []
+        if info.base_health_upgrade != 0:
+            active_entries.append(
+                ("Base HP", info.base_health_upgrade, self._format_attribute(info.base_health_upgrade, False))
+            )
+        if info.self_heal_upgrade != 0:
+            active_entries.append(
+                ("Self Heal", info.self_heal_upgrade, self._format_attribute(info.self_heal_upgrade, False))
+            )
+        if info.self_heal_paused_time_if_attacked_upgrade != 0:
+            active_entries.append(
+                (
+                    "Heal Delay Sec",
+                    info.self_heal_paused_time_if_attacked_upgrade,
+                    str(info.self_heal_paused_time_if_attacked_upgrade),
+                )
+            )
+        if info.passive_ruin_repair_speed_upgrade != 0:
+            active_entries.append(
+                (
+                    "Repair Speed",
+                    info.passive_ruin_repair_speed_upgrade,
+                    self._format_attribute(info.passive_ruin_repair_speed_upgrade, False),
+                )
+            )
+        if info.encamped_unit_self_heal_multiplier_upgrade != 0:
+            active_entries.append(
+                (
+                    "Encamped Mult",
+                    info.encamped_unit_self_heal_multiplier_upgrade,
+                    self._format_attribute(info.encamped_unit_self_heal_multiplier_upgrade, False),
+                )
+            )
+
+        if not active_entries:
+            return
+
+        if indent:
+            print(f"{indent}├── [Health Upgrade Attributes]:")
+            sub_indent = indent + "│   "
+            for i, (name, raw_val, fmt_val) in enumerate(active_entries):
+                is_last = i == len(active_entries) - 1
+                connector = "└── " if is_last else "├── "
+                print(f"{sub_indent}{connector}{f'[{name}]:':<15} {fmt_val:<10} (Raw: {raw_val})")
+        else:
+            border = "═" * width
+            print(f"╔{border}╗")
+            print(f"║ Health Upgrade Attributes (GUID: {self.guid})".ljust(width + 1) + "║")
+            print(f"╠{border}╣")
+            for name, raw_val, fmt_val in active_entries:
+                print(f"║  |- {f'[{name}]:':<15} {fmt_val:<10} (Raw: {raw_val})".ljust(width + 1) + "║")
+            print(f"╚{border}╝")
+
+
+@dataclass(frozen=True)
+class VehicleUpgradeInfo:
+    """The processed 'VehicleUpgrade' properties as one single object."""
+
+    activate_white_flag: bool
+    """Flag to avoid conflict with hostile forces."""
+
+    activate_pirate_flag: bool
+    """Flag enabling pirate state (hostile to neutral ships)."""
+
+
+class AssetWithVehicleUpgrade(AssetWithUpgradeBase):
+    """
+    Base class for assets that contain a 'VehicleUpgrade' property.
+    Consolidates the extraction, formatting, and printing of naval vehicle behaviors.
+    """
+
+    @cached_property
+    def vehicle_upgrade_info(self) -> VehicleUpgradeInfo:
+        """The structured 'VehicleUpgrade' data."""
+        white_flag = cast("bool | None", self.find_value("VehicleUpgrade.ActivateWhiteFlag")) or False
+        pirate_flag = cast("bool | None", self.find_value("VehicleUpgrade.ActivatePirateFlag")) or False
+
+        return VehicleUpgradeInfo(activate_white_flag=white_flag, activate_pirate_flag=pirate_flag)
+
+    def print_vehicle_upgrade_info(self, width: int = 100, indent: str = "") -> None:
+        """Helper method to format and print VehicleUpgrade behaviors."""
+        info = self.vehicle_upgrade_info
+        if not info:
+            return
+
+        active_entries: List[tuple[str, bool, str]] = []
+        if info.activate_white_flag:
+            active_entries.append(("White Flag", True, "Active"))
+        if info.activate_pirate_flag:
+            active_entries.append(("Pirate Flag", True, "Active"))
+
+        if not active_entries:
+            return
+
+        if indent:
+            print(f"{indent}├── [Vehicle Upgrade Attributes]:")
+            sub_indent = indent + "│   "
+            for i, (name, raw_val, fmt_val) in enumerate(active_entries):
+                is_last = i == len(active_entries) - 1
+                connector = "└── " if is_last else "├── "
+                print(f"{sub_indent}{connector}{f'[{name}]:':<15} {fmt_val:<10} (Raw: {raw_val})")
+        else:
+            border = "═" * width
+            print(f"╔{border}╗")
+            print(f"║ Vehicle Upgrade Attributes (GUID: {self.guid})".ljust(width + 1) + "║")
+            print(f"╠{border}╣")
+            for name, raw_val, fmt_val in active_entries:
+                print(f"║  |- {f'[{name}]:':<15} {fmt_val:<10} (Raw: {raw_val})".ljust(width + 1) + "║")
+            print(f"╚{border}╝")
+
+
+@dataclass(frozen=True)
+class TradeShipUpgradeInfo:
+    """The processed 'TradeShipUpgrade' properties as one single object."""
+
+    active_trade_price_in_percent: float
+    """Trading discount/bonus value."""
+
+    loading_speed_upgrade: float
+    """Increase in loading or transfer speeds."""
+
+
+class AssetWithTradeShipUpgrade(AssetWithUpgradeBase):
+    """
+    Base class for assets that contain a 'TradeShipUpgrade' property.
+    Consolidates the extraction, formatting, and printing of cargo/trading buffs.
+    """
+
+    @cached_property
+    def trade_ship_upgrade_info(self) -> TradeShipUpgradeInfo:
+        """The structured 'TradeShipUpgrade' data."""
+        trade_price = cast("float | None", self.find_value("TradeShipUpgrade.ActiveTradePriceInPercent")) or 0.0
+        loading_speed = cast("float | None", self.find_value("TradeShipUpgrade.LoadingSpeedUpgrade")) or 0.0
+
+        return TradeShipUpgradeInfo(active_trade_price_in_percent=trade_price, loading_speed_upgrade=loading_speed)
+
+    def print_trade_ship_upgrade_info(self, width: int = 100, indent: str = "") -> None:
+        """Helper method to format and print TradeShip values."""
+        info = self.trade_ship_upgrade_info
+        if not info:
+            return
+
+        active_entries: List[tuple[str, float, str]] = []
+        if info.active_trade_price_in_percent != 0.0:
+            fmt_price = self._format_attribute(info.active_trade_price_in_percent, True)
+            active_entries.append(("Trade Price", info.active_trade_price_in_percent, fmt_price))
+        if info.loading_speed_upgrade != 0.0:
+            fmt_speed = self._format_attribute(info.loading_speed_upgrade, True)
+            active_entries.append(("Loading Speed", info.loading_speed_upgrade, fmt_speed))
+
+        if not active_entries:
+            return
+
+        if indent:
+            print(f"{indent}├── [Trade Ship Upgrade Attributes]:")
+            sub_indent = indent + "│   "
+            for i, (name, raw_val, fmt_val) in enumerate(active_entries):
+                is_last = i == len(active_entries) - 1
+                connector = "└── " if is_last else "├── "
+                print(f"{sub_indent}{connector}{f'[{name}]:':<15} {fmt_val:<10} (Raw: {raw_val})")
+        else:
+            border = "═" * width
+            print(f"╔{border}╗")
+            print(f"║ Trade Ship Upgrade Attributes (GUID: {self.guid})".ljust(width + 1) + "║")
             print(f"╠{border}╣")
             for name, raw_val, fmt_val in active_entries:
                 print(f"║  |- {f'[{name}]:':<15} {fmt_val:<10} (Raw: {raw_val})".ljust(width + 1) + "║")

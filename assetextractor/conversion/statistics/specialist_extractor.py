@@ -90,6 +90,9 @@ class SpecialistExtractor:
                 case "ItemWithBoost":
                     raw_boosts[a.guid] = cast("ItemWithBoost", a)
                 case "Item":
+                    # Filter out test items.
+                    if a.guid in [95752, 95753, 95764]:
+                        continue
                     raw_items[a.guid] = cast("Item", a)
                 case _:
                     pass

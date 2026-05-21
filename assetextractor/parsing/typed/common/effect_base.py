@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Dict, List, Sequence, Union, cast
 
 from assetextractor.parsing.core.assets import Asset
 from assetextractor.parsing.typed.asset_pool_named import AssetPoolNamed
-from assetextractor.parsing.typed.buffs import BuildingBuff, ShipBuff
+from assetextractor.parsing.typed.buffs import AreaBuff, BuildingBuff, ShipBuff
 from assetextractor.parsing.typed.buildings import AssetBuildingBase
 from assetextractor.parsing.typed.common.asset_pool_base import AssetPoolBase
 from assetextractor.parsing.typed.common.building import AssetWithBuilding
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
 
 # Shared type definition for all valid buff template assets.
-BuffKey = Union["BuildingBuff", "ShipBuff"]
+BuffKey = Union["BuildingBuff", "ShipBuff", "AreaBuff"]
 """TODO: Add the other asset classes into this list (if applies)."""
 
 # Shared type definition for the production chain mapping keys to avoid repetition and errors
@@ -79,7 +79,7 @@ class AssetWithEffect(Asset):
         out: List[BuffKey] = []
         for entry in cast("ListAttribute", self.find("Effect.Buffs")):
             buff = entry.find_ref("GUID")
-            if isinstance(buff, (BuildingBuff, ShipBuff)):
+            if isinstance(buff, (BuildingBuff, ShipBuff, AreaBuff)):
                 out.append(buff)
         return out
 
@@ -124,6 +124,13 @@ class AssetWithEffect(Asset):
                     buff_asset.print_residence_upgrade_info(indent=child_prefix)
                 if hasattr(buff_asset, "print_factory_upgrade_info"):
                     buff_asset.print_factory_upgrade_info(indent=child_prefix)
+            elif isinstance(buff_asset, ShipBuff):
+                if hasattr(buff_asset, "print_health_upgrade_info"):
+                    buff_asset.print_health_upgrade_info(indent=child_prefix)
+                if hasattr(buff_asset, "print_vehicle_upgrade_info"):
+                    buff_asset.print_vehicle_upgrade_info(indent=child_prefix)
+                if hasattr(buff_asset, "print_trade_ship_upgrade_info"):
+                    buff_asset.print_trade_ship_upgrade_info(indent=child_prefix)
 
     def print_targets(self, targets: Sequence[Asset], chains_mapping: ChainMapping, prefix: str = "") -> None:
         """Processes and prints target assets and structural asset pools recursively.
