@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Dict, List, Sequence, Union, cast
 
 from assetextractor.parsing.core.assets import Asset
 from assetextractor.parsing.typed.asset_pool_named import AssetPoolNamed
-from assetextractor.parsing.typed.buffs import AreaBuff, BuildingBuff, ShipBuff
+from assetextractor.parsing.typed.buffs import BUFF_CLASSES, BuffKey
 from assetextractor.parsing.typed.buildings import AssetBuildingBase
 from assetextractor.parsing.typed.common.asset_pool_base import AssetPoolBase
 from assetextractor.parsing.typed.common.building import AssetWithBuilding
@@ -19,10 +19,6 @@ if TYPE_CHECKING:
     from assetextractor.parsing.core.attributes import ListAttribute
     from assetextractor.parsing.typed.production_chain import ProductionChain
 
-
-# Shared type definition for all valid buff template assets.
-BuffKey = Union["BuildingBuff", "ShipBuff", "AreaBuff"]
-"""TODO: Add the other asset classes into this list (if applies)."""
 
 # Shared type definition for the production chain mapping keys to avoid repetition and errors
 ChainKey = Union["ProductionChain", "AssetPoolBase", "AssetFactoryBase"]
@@ -79,7 +75,7 @@ class AssetWithEffect(Asset):
         out: List[BuffKey] = []
         for entry in cast("ListAttribute", self.find("Effect.Buffs")):
             buff = entry.find_ref("GUID")
-            if isinstance(buff, (BuildingBuff, ShipBuff, AreaBuff)):
+            if isinstance(buff, BUFF_CLASSES):
                 out.append(buff)
         return out
 
@@ -116,21 +112,23 @@ class AssetWithEffect(Asset):
 
             print(f"{prefix}{connector}Buff #{idx}: {buff_asset.name} (GUID: {buff_asset.guid})")
 
-            # Handle internal property upgrades if present
-            if isinstance(buff_asset, BuildingBuff):
-                if hasattr(buff_asset, "print_upgrade_info"):
-                    buff_asset.print_building_upgrade_info(indent=child_prefix)
-                if hasattr(buff_asset, "print_residence_upgrade_info"):
-                    buff_asset.print_residence_upgrade_info(indent=child_prefix)
-                if hasattr(buff_asset, "print_factory_upgrade_info"):
-                    buff_asset.print_factory_upgrade_info(indent=child_prefix)
-            elif isinstance(buff_asset, ShipBuff):
-                if hasattr(buff_asset, "print_health_upgrade_info"):
-                    buff_asset.print_health_upgrade_info(indent=child_prefix)
-                if hasattr(buff_asset, "print_vehicle_upgrade_info"):
-                    buff_asset.print_vehicle_upgrade_info(indent=child_prefix)
-                if hasattr(buff_asset, "print_trade_ship_upgrade_info"):
-                    buff_asset.print_trade_ship_upgrade_info(indent=child_prefix)
+            # Automatically find and run any printing methods that the buff
+            # asset supports. I love duck-typing!.
+            for method_name in (
+                "print_building_upgrade_info",
+                "print_residence_upgrade_info",
+                "print_factory_upgrade_info",
+                "print_health_upgrade_info",
+                "print_movement_upgrade_info",
+                "print_vehicle_upgrade_info",
+                "print_trade_ship_upgrade_info",
+                "print_area_need_attribute_buff_info",
+                "print_maintenance_upgrade_info",
+                "print_unit_upgrade_info",
+            ):
+                if hasattr(buff_asset, method_name):
+                    method = getattr(buff_asset, method_name)
+                    method(indent=child_prefix)
 
     def print_targets(self, targets: Sequence[Asset], chains_mapping: ChainMapping, prefix: str = "") -> None:
         """Processes and prints target assets and structural asset pools recursively.

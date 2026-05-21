@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 from functools import cached_property
 from typing import TYPE_CHECKING, Dict, cast
 
-from assetextractor.parsing.typed.common.upgrades import (
+from assetextractor.parsing.typed.common.upgrades.common import (
     AdditionalAttributesInfo,
     AssetWithUpgradeBase,
     FormattedAttributesInfo,
@@ -13,25 +15,29 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
-class AreaNeedAttributeBuffInfo:
-    """The processed 'ResidenceUpgrade' properties as one single object."""
+class BuildingUpgradeInfo:
+    """The processed 'BuildingUpgrade' properties as one single object."""
 
-    additional_bonus_attributes: AdditionalAttributesInfo
+    additional_attributes: AdditionalAttributesInfo
     """Specific attributes from array dataset 'NeedAttributeType'. Comes from
-    'AreaNeedAttributeBuff.BonusAttributes'."""
+    'BuildingUpgrade.AdditionalAttributes'."""
 
-    formatted_bonus_attributes: FormattedAttributesInfo
+    formatted_attributes: FormattedAttributesInfo
     """The formatted representation of each attribute, utilizing UI text mapping rules."""
 
 
-class AreaBuff(AssetWithUpgradeBase, template_names="AreaBuff"):
-    """Specialized Asset for 'AreaBuff'."""
+class AssetWithBuildingUpgrade(AssetWithUpgradeBase):
+    """
+    Base class for assets that contain a 'BuildingUpgrade' property.
+    This consolidates the extraction, formatting, and printing of additional building attributes.
+    """
 
     @cached_property
-    def area_need_attribute_buff_info(self) -> AreaNeedAttributeBuffInfo:
-        """The structured 'AreaNeedAttributeBuff' data containing modified resource amounts."""
+    def building_upgrade_info(self) -> BuildingUpgradeInfo:
+        """The structured 'BuildingUpgrade' data containing modified resource amounts."""
+        # Retrieve the dictionary representing structural game modifiers
         raw_attributes_dict = cast(
-            "Dict[str, DictAttribute | None]", self.find_value("AreaNeedAttributeBuff.BonusAttributes")
+            "Dict[str, DictAttribute | None]", self.find_value("BuildingUpgrade.AdditionalAttributes")
         )
 
         # Extract values and determine percentage statuses using shared class method
@@ -56,7 +62,7 @@ class AreaBuff(AssetWithUpgradeBase, template_names="AreaBuff"):
             prestige=prestige_val,
         )
 
-        # Build UI-ready formatted string dataset using shared class formatting method
+        # Build UI-ready formatted string dataset using correct percental hints
         formatted_attributes = FormattedAttributesInfo(
             population=self._format_attribute(population_val, population_is_percent),
             money=self._format_attribute(money_val, money_is_percent),
@@ -68,25 +74,23 @@ class AreaBuff(AssetWithUpgradeBase, template_names="AreaBuff"):
             prestige=self._format_attribute(prestige_val, prestige_is_percent),
         )
 
-        return AreaNeedAttributeBuffInfo(
-            additional_bonus_attributes=add_attributes, formatted_bonus_attributes=formatted_attributes
-        )
+        return BuildingUpgradeInfo(additional_attributes=add_attributes, formatted_attributes=formatted_attributes)
 
-    def print_area_need_attribute_buff_info(self, width: int = 100, indent: str = "") -> None:
-        """Helper debugging method to print the active area need attribute buff information.
+    def print_building_upgrade_info(self, width: int = 100, indent: str = "") -> None:
+        """Helper debugging method to print the active building upgrade information.
 
         Args:
             width: Global separation boundary width.
             indent: Optional string prefix to align perfectly with target layout structures.
         """
-        info = self.area_need_attribute_buff_info
+        info = self.building_upgrade_info
         if not info:
             return
 
         self._print_upgrade_info_base(
-            raw=info.additional_bonus_attributes,
-            fmt=info.formatted_bonus_attributes,
-            title_prefix="Area Need Attribute Buff",
+            raw=info.additional_attributes,
+            fmt=info.formatted_attributes,
+            title_prefix="Building Upgrade",
             width=width,
             indent=indent,
         )
