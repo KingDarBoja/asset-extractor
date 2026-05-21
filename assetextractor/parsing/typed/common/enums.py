@@ -115,3 +115,14 @@ class ItemOrigin(Enum):
 
     BASE_RELEASE = "BaseRelease"  # Vanilla
     DLC_POA = "DLC01"  # Prophecies of Ashes
+
+
+class SlotType(Enum):
+    """
+    Define the dataset 'SlotType' that must contain 7 values. This comes
+    from '?' asset.
+    """
+
+    MOUNTAIN = "Mountain"
+    NONE = "None"
+    RIVER = "River"

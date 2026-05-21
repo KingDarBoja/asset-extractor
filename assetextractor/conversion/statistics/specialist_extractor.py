@@ -12,6 +12,12 @@ from assetextractor.parsing.typed.item import Item, ItemWithBoost
 if TYPE_CHECKING:
     from assetextractor.parsing.core.assets import Asset, AssetCache
 
+# Safely import IPython's display for Jupyter Notebook integration
+try:
+    from IPython.display import HTML, display  # type: ignore
+except ImportError:
+    display, HTML = None, None  # type: ignore
+
 
 @dataclass
 class SpecialistCollection:
@@ -131,8 +137,60 @@ class SpecialistExtractor:
         print(f"{type_label}: {item.item_standard_info.title} (GUID: {item.guid}) ".center(self.print_width))
         print(f"{'=' * self.print_width}")
 
-        print(f"Standard Name: {item.item_standard_info.std_name}")
-        print(f"Description:   {item.item_standard_info.description}")
+        std_name = item.item_standard_info.std_name
+        description = item.item_standard_info.description
+
+        rendered_side_by_side = False
+        if display is not None and HTML is not None:
+            icon_data = IconProcessor.get_icon_package(item, include_image=True)
+            img = icon_data.get("image")
+            if img is not None:
+                import base64
+
+                b64_data = None
+                mime_type = "image/png"
+
+                # Extract raw bytes from the object's rich-display representation hooks
+                for attr, mime in [
+                    ("_repr_png_", "image/png"),
+                    ("_repr_webp_", "image/webp"),
+                    ("_repr_jpeg_", "image/jpeg"),
+                ]:
+                    if hasattr(img, attr):
+                        try:
+                            raw_bytes = getattr(img, attr)()
+                            if raw_bytes:
+                                b64_data = base64.b64encode(raw_bytes).decode("utf-8")
+                                mime_type = mime
+                                break
+                        except Exception:
+                            pass
+
+                if b64_data:
+                    # Dynamic theme-aware side-by-side flexbox layout
+                    html_content = f"""
+                    <div style="display: flex; align-items: flex-start; gap: 16px; margin: 12px 0; font-family: var(--jp-ui-font-family, sans-serif); color: var(--jp-ui-font-color1, #111);">
+                        <div style="flex-shrink: 0; width: 64px; height: 64px; border: 1px solid var(--jp-border-color2, #ccc); border-radius: 4px; overflow: hidden; background: #2a2a2a; display: flex; align-items: center; justify-content: center;">
+                            <img src="data:{mime_type};base64,{b64_data}" style="width: 64px; height: 64px; object-fit: contain;" />
+                        </div>
+                        <div style="display: flex; flex-direction: column; justify-content: center; min-height: 64px; line-height: 1.5;">
+                            <div><strong style="color: var(--jp-ui-font-color2, #444);">Standard Name:</strong> {std_name}</div>
+                            <div style="margin-top: 2px;"><strong style="color: var(--jp-ui-font-color2, #444);">Description:</strong> <span style="font-style: italic; color: var(--jp-ui-font-color3, #666);">{description}</span></div>
+                        </div>
+                    </div>
+                    """
+                    display(HTML(html_content))
+                    rendered_side_by_side = True
+
+        # Fallback to normal stacked text/image print if running outside a notebook
+        if not rendered_side_by_side:
+            if display is not None:
+                icon_data = IconProcessor.get_icon_package(item, include_image=True)
+                if img := icon_data.get("image"):
+                    display(img, metadata={"image/png": {"width": 64, "height": 64}})
+            print(f"Standard Name: {std_name}")
+            print(f"Description:   {description}")
+
         print(f"{'-' * self.print_width}")
 
         info = item.item_info

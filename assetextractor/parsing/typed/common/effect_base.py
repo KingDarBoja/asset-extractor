@@ -119,9 +119,11 @@ class AssetWithEffect(Asset):
             # Handle internal property upgrades if present
             if isinstance(buff_asset, BuildingBuff):
                 if hasattr(buff_asset, "print_upgrade_info"):
-                    buff_asset.print_upgrade_info(indent=child_prefix)
+                    buff_asset.print_building_upgrade_info(indent=child_prefix)
                 if hasattr(buff_asset, "print_residence_upgrade_info"):
                     buff_asset.print_residence_upgrade_info(indent=child_prefix)
+                if hasattr(buff_asset, "print_factory_upgrade_info"):
+                    buff_asset.print_factory_upgrade_info(indent=child_prefix)
 
     def print_targets(self, targets: Sequence[Asset], chains_mapping: ChainMapping, prefix: str = "") -> None:
         """Processes and prints target assets and structural asset pools recursively.
