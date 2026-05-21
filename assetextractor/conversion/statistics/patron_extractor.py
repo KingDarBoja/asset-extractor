@@ -8,9 +8,6 @@ from typing import TYPE_CHECKING, Dict, List, Sequence, TypedDict, Union, cast
 from assetextractor.conversion.statistics.icon_processor import IconProcessor
 from assetextractor.parsing.core.texts import StandardTextConverter, Text
 from assetextractor.parsing.typed.common.asset_pool_base import AssetPoolBase
-from assetextractor.parsing.typed.common.building import AssetWithBuilding
-from assetextractor.parsing.typed.common.cost import AssetWithCosts
-from assetextractor.parsing.typed.common.maintenance import AssetWithMaintenance
 from assetextractor.parsing.typed.patron import Patron
 from assetextractor.parsing.typed.production_chain import ProductionChain
 
@@ -367,11 +364,11 @@ class PatronExtractor:
 
             if effect_data.asset:
                 print(f"Asset GUID:  {effect_data.asset.guid}")
-                self._print_buffs(effect_data.asset.buffs)
+                effect_data.asset.print_buffs(effect_data.asset.buffs)
 
                 # Only pass the chains mapping for the first effect to keep target prints clean
                 current_chains_mapping = effect_data.asset.production_chains_by_target if eff_index == 0 else {}
-                self._print_targets(effect_data.asset.targets, current_chains_mapping)
+                effect_data.asset.print_targets(effect_data.asset.targets, current_chains_mapping)
 
             print(f"{'-' * self.print_width}")
 
@@ -384,67 +381,6 @@ class PatronExtractor:
 
             if eff_index < len(patron.local_effects) - 1:
                 print(f"{'-' * self.print_width}")
-
-    def _print_buffs(self, buffs: Sequence[Asset]):
-        """Private method to process and print buff assets."""
-        print(f"{'-' * self.print_width}")
-        print(f"Buffs: {len(buffs)}")
-
-        for buff_index, buff_asset in enumerate(buffs, 1):
-            print(f"  |- {buff_index} Buff - {buff_asset.name} (GUID: {buff_asset.guid})")
-
-    def _print_targets(self, targets: Sequence[Asset], chains_mapping: ChainMapping, level: int = 0) -> None:
-        """Private method to process and print target assets and asset pools recursively.
-
-        Args:
-            targets: The sequence of target assets to loop over.
-            chains_mapping: The patron's production_chains_by_target property dictionary.
-            level: Recursion depth formatting level.
-        """
-        # Print the header only at the root level
-        if level == 0:
-            print(f"{'-' * self.print_width}")
-            print(f"Targets: {len(targets)}")
-
-        # Calculate indentation based on recursion depth
-        indent = "  " * level
-
-        for target_index, target_asset in enumerate(targets, 1):
-            if target_index > 1:
-                print(f"{'-' * self.print_width}")
-
-            # Print the current target with proper indentation
-            print(f"{indent}  |- {target_index} Target: {target_asset.name} (GUID: {target_asset.guid})")
-
-            # 1. Handle Recursion First
-            if isinstance(target_asset, AssetPoolBase):
-                self._print_targets(target_asset.asset_pool_list, chains_mapping, level + 1)
-                continue  # Move to next target in loop
-
-            # 2. Handle Construction Costs (Common to Buildings and Units)
-            if isinstance(target_asset, AssetWithCosts):
-                costs = target_asset.formatted_costs
-                if costs:
-                    cost_str = ", ".join([f"{c.amount} {c.ingredient}" for c in costs])
-                    print(f"{indent}     |- [Costs]: {cost_str}")
-
-            # 3. Handle Maintenance (Specific to Units/Ships)
-            if isinstance(target_asset, AssetWithMaintenance):
-                m_costs = target_asset.formatted_maintenance_costs
-                if m_costs:
-                    m_str = ", ".join([f"{m.amount} {m.product}" for m in m_costs])
-                    print(f"{indent}     |- [Maintenance]: {m_str}")
-
-            # 4. Handle the list of affected buildings / units assets from this target.
-            if isinstance(target_asset, AssetWithBuilding):
-                build_cat_name = target_asset.building_info.category_name
-                print(f"{indent}     |- [Category Name]: {build_cat_name}")
-
-            # 5. Reverse-lookup associated Production Chains matching this specific target's GUID
-            for chain, targets_dict in chains_mapping.items():
-                if target_asset.guid in targets_dict:
-                    chain_text = self._get_text(chain)
-                    print(f"{indent}     |- [Production Chain]: {chain.name} (GUID: {chain.guid}) - {chain_text}")
 
     # --- Export Methods ---
 
