@@ -104,6 +104,46 @@ class SpecialistItemJSON(TypedDict):
     effect: SpecialistEffectJSON | None
 
 
+# --- Simplified Export Schemas ---
+
+
+class SimplifiedAttribute(TypedDict):
+    key: str
+    value: str
+    product_needs: List[int]
+
+
+class SimplifiedBuff(TypedDict):
+    attributes: List[SimplifiedAttribute]
+    additional_workforces: List[int]
+    added_fertility: AddedFertilityJSON | None  # Keeps the structure from AddedFertilityJSON
+    workforce_replacement: ReplacementWorkforceJSON | None  # Keeps the structure from ReplacementWorkforceJSON
+
+
+class SimplifiedTarget(TypedDict):
+    affected_items: List[int]
+
+
+class SimplifiedEffect(TypedDict):
+    scope: str
+    category: str
+    targets: List[SimplifiedTarget]
+    buffs: List[SimplifiedBuff]
+
+
+class SimplifiedSpecialist(TypedDict):
+    title: str
+    description: str
+    rarity: str
+    niche: str
+    allocation: str
+    effect: SimplifiedEffect
+
+
+# The final container for your JSON dump
+SimplifiedDataDict = Dict[str, SimplifiedSpecialist]
+
+
 @dataclass
 class SpecialistCollection:
     """Container for categorized and sorted game assets."""
@@ -187,18 +227,13 @@ class SpecialistExtractor:
 
     # --- Serialization Methods ---
 
-    def _serialize_single_buff_modifiers(self, buff_asset: Asset, effect_targets: Sequence[Asset]) -> BuffModifierJSON:
+    def _serialize_single_buff_modifiers(self, buff_asset: Asset) -> BuffModifierJSON:
         """Inspects a buff asset and aggregates all active component modifiers dynamically."""
         attributes: List[ModifierUpgradeAttributeJSON] = []
         additional_workforces: List[AdditionalWorkforceJSON] = []
         workforce_repl: ReplacementWorkforceJSON | None = None
         added_fertility_data: AddedFertilityJSON | None = None
         nested_effect_data: SpecialistEffectJSON | None = None
-
-        # # Resolve primary target GUID for attribute linking (e.g. Eques Residence)
-        # primary_target_guid: int | None = None
-        # if effect_targets:
-        #     primary_target_guid = effect_targets[0].guid
 
         # List all the serialize modifiers methods.
         modifier_methods = [
@@ -241,7 +276,6 @@ class SpecialistExtractor:
                                 "label": attr["label"],
                                 "value": attr["value"],
                                 "raw": attr["raw"],
-                                # "target_guid": primary_target_guid,
                                 "product_needs": product_refs,
                             }
                         )
@@ -249,13 +283,7 @@ class SpecialistExtractor:
                 # 4. Handle specific component side-effects
                 if "additional_workforces" in res and res["additional_workforces"] is not None:
                     for wf in res["additional_workforces"]:
-                        additional_workforces.append(
-                            {
-                                "guid": wf["guid"],
-                                "title": wf["title"],
-                                # "target_guid": primary_target_guid,
-                            }
-                        )
+                        additional_workforces.append({"guid": wf["guid"], "title": wf["title"]})
 
                 if "added_fertility" in res:
                     added_fertility_data = res["added_fertility"]
@@ -267,9 +295,7 @@ class SpecialistExtractor:
                     effect_obj = res["additional_fun_effect"]
                     # Serialize targets and buffs using existing methods
                     serialized_targets = self._serialize_targets(effect_obj.targets)
-                    serialized_buffs = [
-                        self._serialize_single_buff_modifiers(buff, effect_obj.targets) for buff in effect_obj.buffs
-                    ]
+                    serialized_buffs = [self._serialize_single_buff_modifiers(buff) for buff in effect_obj.buffs]
 
                     nested_effect_data = {
                         "scope": effect_obj.effect_info.effect_scope,
@@ -423,6 +449,126 @@ class SpecialistExtractor:
 
     # --- Export Methods ---
 
+    def export_simplified_json(self, output_path: Path | str):
+        """
+        Exports a minimalist JSON representation where nested GUIDs, templates,
+        and name properties are stripped.
+        """
+        simplified_data: SimplifiedDataDict = {}
+
+        all_specs = list(self.specialists.items.values()) + list(self.specialists.items_with_boost.values())
+
+        for item in all_specs:
+            simplified_data[str(item.guid)] = {
+                "title": item.item_standard_info.title,
+                "description": item.item_standard_info.description,
+                "rarity": item.item_info.rarity,
+                "niche": item.item_info.niche,
+                "allocation": item.item_info.allocation,
+                "effect": {
+                    "scope": item.effect_info.effect_scope,
+                    "category": item.effect_info.source_category,
+                    "targets": [
+                        {"affected_items": [i["guid"] for i in self._get_flattened_affected_items(t)]}
+                        for t in item.targets
+                    ],
+                    "buffs": [],
+                },
+            }
+
+            for b in item.buffs:
+                serialized_buff = self._serialize_single_buff_modifiers(b)
+
+                buff_entry: SimplifiedBuff = {
+                    "attributes": [
+                        {
+                            "key": attr["key"],
+                            "value": attr["value"],
+                            "product_needs": [p["guid"] for p in attr["product_needs"]],
+                        }
+                        for attr in serialized_buff["attributes"]
+                    ],
+                    "additional_workforces": [w["guid"] for w in serialized_buff["additional_workforces"]],
+                    "added_fertility": serialized_buff["added_fertility"],
+                    "workforce_replacement": serialized_buff["workforce_replacement"],
+                }
+
+                simplified_data[str(item.guid)]["effect"]["buffs"].append(buff_entry)
+
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(simplified_data, f, indent=4)
+
+        print(f"Simplified export completed to {output_path}")
+
+    def export_assets_index_json(self, output_path: Path, web_base_path: str | None = None, flatten: bool = True):
+        """
+        Exports an index of all referenced affected items, workforce replacements,
+        and additional workforces as a JSON dictionary mapping GUIDs to
+        metadata (name and icon_url).
+        """
+        assets_registry: Dict[str, Dict[str, str]] = {}
+
+        def register(guid: int, title: str, asset: Asset | None = None):
+            if str(guid) in assets_registry:
+                return
+
+            icon_url = "N/A"
+            if asset:
+                icon_data = IconProcessor.get_icon_package(asset)
+                icon_url = IconProcessor.get_final_url(
+                    raw_path=icon_data["path"],
+                    canon_name=icon_data["canon_name"],
+                    web_base_path=web_base_path,
+                    flatten=flatten,
+                    default_name=asset.name,
+                )
+
+            assets_registry[str(guid)] = {"name": title, "icon_url": icon_url}
+
+        # Traverse all specialists
+        all_specs = list(self.specialists.items.values()) + list(self.specialists.items_with_boost.values())
+
+        for item in all_specs:
+            # 1. Affected Items (Targets)
+            for target in item.targets:
+                leaf_items = self._get_flattened_affected_items(target)
+                for leaf in leaf_items:
+                    # Attempt to retrieve asset object via cache
+                    asset = self.assets.get(leaf["guid"])
+                    register(leaf["guid"], leaf["title"], asset)
+
+            # 2. Buffs
+            for buff in item.buffs:
+                serialized = self._serialize_single_buff_modifiers(buff)
+
+                # Additional Workforces
+                for aw in serialized["additional_workforces"]:
+                    asset = self.assets.get(aw["guid"])
+                    register(aw["guid"], aw["title"], asset)
+
+                # Workforce Replacement
+                wr = serialized["workforce_replacement"]
+                if wr:
+                    # Assuming ReplacementWorkforceJSON has 'guid' and 'title' keys
+                    ow_asset = cast("Asset | None", self.assets.get(wr["old_workforce_guid"]))
+                    nw_asset = cast("Asset | None", self.assets.get(wr["new_workforce_guid"]))
+
+                    if ow_asset:
+                        register(ow_asset.guid, ow_asset.text() if ow_asset.text else ow_asset.name, ow_asset)
+
+                    if nw_asset:
+                        register(nw_asset.guid, nw_asset.text() if nw_asset.text else nw_asset.name, nw_asset)
+
+                # Product Needs (New)
+                for attr in serialized["attributes"]:
+                    for pn in attr.get("product_needs", []):
+                        asset = self.assets.get(pn["guid"])
+                        register(pn["guid"], pn["title"], asset)
+
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(assets_registry, f, indent=4)
+        print(f"Asset index exported to {output_path}")
+
     def to_json_dict(self, web_base_path: str | None = None, flatten: bool = True) -> Dict[str, SpecialistItemJSON]:
         output_dict: Dict[str, SpecialistItemJSON] = {}
 
@@ -444,7 +590,7 @@ class SpecialistExtractor:
 
             # Map buffs dynamically, linking attributes contextually to their targets and products
             serialized_buffs: List[BuffModifierJSON] = [
-                self._serialize_single_buff_modifiers(buff, item.targets) for buff in item.buffs
+                self._serialize_single_buff_modifiers(buff) for buff in item.buffs
             ]
 
             effect_data: SpecialistEffectJSON = {
