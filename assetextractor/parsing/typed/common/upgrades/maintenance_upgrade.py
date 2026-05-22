@@ -14,10 +14,10 @@ if TYPE_CHECKING:
 class ReplaceWorkforceInfo:
     """The workforce replacement assets."""
 
-    old_workforce: Asset | None
+    old_workforce: Asset
     """The original workforce asset being replaced."""
 
-    new_workforce: Asset | None
+    new_workforce: Asset
     """The new workforce asset replacing the old one."""
 
 
@@ -58,7 +58,7 @@ class AssetWithMaintenanceUpgrade(AssetWithUpgradeBase):
         new_wf = self.find_ref("MaintenanceUpgrade.ReplaceWorkforce.NewWorkforce")
 
         replace_info = None
-        if old_wf is not None or new_wf is not None:
+        if old_wf is not None and new_wf is not None:
             replace_info = ReplaceWorkforceInfo(old_workforce=old_wf, new_workforce=new_wf)
 
         return MaintenanceUpgradeInfo(
