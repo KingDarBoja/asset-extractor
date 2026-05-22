@@ -2,9 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import cached_property
-from typing import List, cast
+from typing import List, TypedDict, cast
 
-from assetextractor.parsing.typed.common.upgrades.common import AssetWithUpgradeBase
+from .common import AssetWithUpgradeBase, UpgradeAttributeJSON
+
+
+class HealthUpgradeJSON(TypedDict):
+    attributes: List[UpgradeAttributeJSON]
 
 
 @dataclass(frozen=True)
@@ -49,6 +53,59 @@ class AssetWithHealthUpgrade(AssetWithUpgradeBase):
             passive_ruin_repair_speed_upgrade=repair_speed,
             encamped_unit_self_heal_multiplier_upgrade=encamped_mult,
         )
+
+    def serialize_health_modifiers(self) -> HealthUpgradeJSON:
+        """Serializes health adjustments to Web Format."""
+        info = self.health_upgrade_info
+        attributes: List[UpgradeAttributeJSON] = []
+
+        if info.base_health_upgrade != 0:
+            attributes.append(
+                {
+                    "key": "base_health_upgrade",
+                    "label": "Base HP",
+                    "value": str(self._format_attribute(info.base_health_upgrade, False)),
+                    "raw": float(info.base_health_upgrade),
+                }
+            )
+        if info.self_heal_upgrade != 0:
+            attributes.append(
+                {
+                    "key": "self_heal_upgrade",
+                    "label": "Self Heal",
+                    "value": str(self._format_attribute(info.self_heal_upgrade, False)),
+                    "raw": float(info.self_heal_upgrade),
+                }
+            )
+        if info.self_heal_paused_time_if_attacked_upgrade != 0:
+            attributes.append(
+                {
+                    "key": "self_heal_paused_time_if_attacked_upgrade",
+                    "label": "Heal Cooldown Delay",
+                    "value": f"{info.self_heal_paused_time_if_attacked_upgrade}s",
+                    "raw": float(info.self_heal_paused_time_if_attacked_upgrade),
+                }
+            )
+        if info.passive_ruin_repair_speed_upgrade != 0:
+            attributes.append(
+                {
+                    "key": "passive_ruin_repair_speed_upgrade",
+                    "label": "Repair Speed",
+                    "value": str(self._format_attribute(info.passive_ruin_repair_speed_upgrade, False)),
+                    "raw": float(info.passive_ruin_repair_speed_upgrade),
+                }
+            )
+        if info.encamped_unit_self_heal_multiplier_upgrade != 0:
+            attributes.append(
+                {
+                    "key": "encamped_unit_self_heal_multiplier_upgrade",
+                    "label": "Encamped Mult",
+                    "value": str(self._format_attribute(info.encamped_unit_self_heal_multiplier_upgrade, False)),
+                    "raw": float(info.encamped_unit_self_heal_multiplier_upgrade),
+                }
+            )
+
+        return {"attributes": attributes}
 
     def print_health_upgrade_info(self, width: int = 100, indent: str = "") -> None:
         """Helper method to format and print HealthUpgrade values in both tree or boxed layouts."""

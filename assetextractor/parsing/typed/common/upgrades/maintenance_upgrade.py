@@ -2,12 +2,21 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import cached_property
-from typing import TYPE_CHECKING, List, cast
+from typing import TYPE_CHECKING, List, TypedDict, cast
 
-from assetextractor.parsing.typed.common.upgrades import AssetWithUpgradeBase
+from .common import AssetWithUpgradeBase
 
 if TYPE_CHECKING:
     from assetextractor.parsing.core.assets import Asset
+
+    from .common import UpgradeAttributeJSON
+
+
+class ReplacementWorkforceJSON(TypedDict):
+    old_workforce_guid: int
+    old_workforce_title: str
+    new_workforce_guid: int
+    new_workforce_title: str
 
 
 @dataclass(frozen=True)
@@ -19,6 +28,11 @@ class ReplaceWorkforceInfo:
 
     new_workforce: Asset
     """The new workforce asset replacing the old one."""
+
+
+class MaintenanceUpgradeJSON(TypedDict):
+    attributes: List[UpgradeAttributeJSON]
+    workforce_replacement: ReplacementWorkforceJSON | None
 
 
 @dataclass(frozen=True)
@@ -67,6 +81,51 @@ class AssetWithMaintenanceUpgrade(AssetWithUpgradeBase):
             replace_workforce=replace_info,
             encamped_unit_scaling_factor_upgrade=scaling_factor,
         )
+
+    def serialize_maintenance_modifiers(self) -> MaintenanceUpgradeJSON:
+        """Serializes maintenance adjustments and workforce overrides."""
+        info = self.maintenance_upgrade_info
+        attributes: List[UpgradeAttributeJSON] = []
+        workforce_repl: ReplacementWorkforceJSON | None = None
+
+        if info.maintenance_factor_upgrade != 0.0:
+            attributes.append(
+                {
+                    "key": "maintenance_factor",
+                    "label": "Maintenance Cost",
+                    "value": str(self._format_attribute(info.maintenance_factor_upgrade, is_percent=True)),
+                    "raw": float(info.maintenance_factor_upgrade),
+                }
+            )
+        if info.workforce_maintenance_factor_upgrade != 0.0:
+            attributes.append(
+                {
+                    "key": "workforce_maintenance_factor",
+                    "label": "Workforce Maintenance",
+                    "value": str(self._format_attribute(info.workforce_maintenance_factor_upgrade, is_percent=True)),
+                    "raw": float(info.workforce_maintenance_factor_upgrade),
+                }
+            )
+        if info.encamped_unit_scaling_factor_upgrade != 0.0:
+            attributes.append(
+                {
+                    "key": "encamped_unit_scaling_factor_upgrade",
+                    "label": "Encamped Unit Scaling",
+                    "value": str(self._format_attribute(info.encamped_unit_scaling_factor_upgrade, is_percent=False)),
+                    "raw": float(info.encamped_unit_scaling_factor_upgrade),
+                }
+            )
+
+        if info.replace_workforce is not None:
+            rw = info.replace_workforce
+            workforce_repl = {
+                "old_workforce_guid": rw.old_workforce.guid,
+                "old_workforce_title": rw.old_workforce.text() if rw.old_workforce.text else rw.old_workforce.name,
+                "new_workforce_guid": rw.new_workforce.guid,
+                "new_workforce_title": rw.new_workforce.text() if rw.new_workforce.text else rw.new_workforce.name,
+            }
+
+        return {"attributes": attributes, "workforce_replacement": workforce_repl}
 
     def print_maintenance_upgrade_info(self, width: int = 100, indent: str = "") -> None:
         """Helper method to format and print MaintenanceUpgrade values in both tree or boxed layouts."""

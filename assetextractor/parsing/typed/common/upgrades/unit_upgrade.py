@@ -2,9 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import cached_property
-from typing import List, cast
+from typing import TYPE_CHECKING, List, TypedDict, cast
 
-from assetextractor.parsing.typed.common.upgrades import AssetWithUpgradeBase
+from .common import AssetWithUpgradeBase
+
+if TYPE_CHECKING:
+    from .common import UpgradeAttributeJSON
 
 
 @dataclass(frozen=True)
@@ -52,6 +55,10 @@ class UnitUpgradeInfo:
     maximum_morale_upgrade: float
     attack_cone_ballista_module: float
     attack_cone_catapult_module: float
+
+
+class UnitUpgradeJSON(TypedDict):
+    attributes: List[UpgradeAttributeJSON]
 
 
 class AssetWithUnitUpgrade(AssetWithUpgradeBase):
@@ -143,6 +150,57 @@ class AssetWithUnitUpgrade(AssetWithUpgradeBase):
             attack_cone_ballista_module=cone_bal,
             attack_cone_catapult_module=cone_cat,
         )
+
+    def serialize_unit_modifiers(self) -> UnitUpgradeJSON:
+        """Serializes military unit parameters to Web Format."""
+        info = self.unit_upgrade_info
+        attributes: List[UpgradeAttributeJSON] = []
+
+        mapping = {
+            # Key, Label, is_percent
+            "discovery_radius_upgrade": ("Discovery Radius", False),
+            "reward_money_per_destroyed_building_upgrade": ("Bld Destroy Bounty", False),
+            "reward_money_per_destroyed_ship_upgrade": ("Ship Destroy Bounty", False),
+            "defense_upgrade": ("Defense", False),
+            "armor_upgrade": ("Armor", False),
+            "shield_upgrade": ("Shield", False),
+            "accuracy_upgrade": ("Accuracy", False),
+            "accuracy_archer_module_upgrade": ("Archer Acc", False),
+            "accuracy_catapult_module_upgrade": ("Catapult Acc", False),
+            "accuracy_ballista_module_upgrade": ("Ballista Acc", False),
+            "distance_attack_range_percentual_upgrade": ("Atk Range Boost", True),
+            "distance_attack_range_archer_module_percentual_upgrade": ("Archer Range Boost", True),
+            "distance_attack_range_catapult_module_percentual_upgrade": ("Catapult Range Boost", True),
+            "distance_attack_range_ballista_module_percentual_upgrade": ("Ballista Range Boost", True),
+            "offense_melee_upgrade": ("Melee Damage", False),
+            "offense_charge_upgrade": ("Charge Damage", False),
+            "offense_ranged_upgrade": ("Ranged Damage", False),
+            "offense_archer_module_ranged_upgrade": ("Archer Damage", False),
+            "offense_catapult_module_ranged_upgrade": ("Catapult Damage", False),
+            "offense_ballista_module_ranged_upgrade": ("Ballista Damage", False),
+            "attack_speed_archer_module_percentual_upgrade": ("Archer Speed", True),
+            "attack_speed_catapult_module_percentual_upgrade": ("Catapult Speed", True),
+            "attack_speed_ballista_module_percentual_upgrade": ("Ballista Speed", True),
+            "attack_speed_torch_percentual_upgrade": ("Torch Speed", True),
+            "attack_speed_ranged_percentual_upgrade": ("Ranged Atk Speed", True),
+            "maximum_morale_upgrade": ("Morale Buff", False),
+            "attack_cone_ballista_module": ("Ballista Fire Arc", False),
+            "attack_cone_catapult_module": ("Catapult Fire Arc", False),
+        }
+
+        for field_name, (label, is_pct) in mapping.items():
+            val = getattr(info, field_name)
+            if val != 0.0:
+                attributes.append(
+                    {
+                        "key": field_name,
+                        "label": label,
+                        "value": str(self._format_attribute(val, is_pct)),
+                        "raw": float(val),
+                    }
+                )
+
+        return {"attributes": attributes}
 
     def print_unit_upgrade_info(self, width: int = 100, indent: str = "") -> None:
         """Helper method to format and print UnitUpgrade values in both tree or boxed layouts."""

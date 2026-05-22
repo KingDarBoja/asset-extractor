@@ -1,6 +1,7 @@
 """Package initialization for the common 'upgrades' class utilities sub-module."""
 
 from .building_upgrade import *
+from .common import *
 from .factory_upgrade import *
 from .health_upgrade import *
 from .maintenance_upgrade import *

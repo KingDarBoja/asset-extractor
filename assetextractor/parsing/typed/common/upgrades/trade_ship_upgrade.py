@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import cached_property
-from typing import List, cast
+from typing import List, TypedDict, cast
 
-from assetextractor.parsing.typed.common.upgrades.common import AssetWithUpgradeBase
+from .common import AssetWithUpgradeBase, UpgradeAttributeJSON
 
 
 @dataclass(frozen=True)
@@ -16,6 +16,10 @@ class TradeShipUpgradeInfo:
 
     loading_speed_upgrade: float
     """Increase in loading or transfer speeds."""
+
+
+class TradeShipUpgradeJSON(TypedDict):
+    attributes: List[UpgradeAttributeJSON]
 
 
 class AssetWithTradeShipUpgrade(AssetWithUpgradeBase):
@@ -31,6 +35,32 @@ class AssetWithTradeShipUpgrade(AssetWithUpgradeBase):
         loading_speed = cast("float | None", self.find_value("TradeShipUpgrade.LoadingSpeedUpgrade")) or 0.0
 
         return TradeShipUpgradeInfo(active_trade_price_in_percent=trade_price, loading_speed_upgrade=loading_speed)
+
+    def serialize_trade_ship_modifiers(self) -> TradeShipUpgradeJSON:
+        """Serializes cargo trading price adjustments and terminal loading modifiers."""
+        info = self.trade_ship_upgrade_info
+        attributes: List[UpgradeAttributeJSON] = []
+
+        if info.active_trade_price_in_percent != 0.0:
+            attributes.append(
+                {
+                    "key": "active_trade_price_in_percent",
+                    "label": "Active Trade Price",
+                    "value": str(self._format_attribute(info.active_trade_price_in_percent, is_percent=True)),
+                    "raw": float(info.active_trade_price_in_percent),
+                }
+            )
+        if info.loading_speed_upgrade != 0.0:
+            attributes.append(
+                {
+                    "key": "loading_speed_upgrade",
+                    "label": "Loading Speed",
+                    "value": str(self._format_attribute(info.loading_speed_upgrade, is_percent=True)),
+                    "raw": float(info.loading_speed_upgrade),
+                }
+            )
+
+        return {"attributes": attributes}
 
     def print_trade_ship_upgrade_info(self, width: int = 100, indent: str = "") -> None:
         """Helper method to format and print TradeShip values."""

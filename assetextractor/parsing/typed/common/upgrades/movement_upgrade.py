@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 from functools import cached_property
-from typing import List, cast
+from typing import List, TypedDict, cast
 
-from assetextractor.parsing.typed.common.upgrades.common import AssetWithUpgradeBase
+from .common import AssetWithUpgradeBase, UpgradeAttributeJSON
 
 
 @dataclass(frozen=True)
@@ -16,6 +16,10 @@ class MovementUpgradeInfo:
     buff_reduce_positive_wind_impact_upgrade: float
     buff_favorable_wind_angle: float
     buff_transfer_speed_upgrade: float
+
+
+class MovementUpgradeJSON(TypedDict):
+    attributes: List[UpgradeAttributeJSON]
 
 
 class AssetWithMovementUpgrade(AssetWithUpgradeBase):
@@ -44,6 +48,35 @@ class AssetWithMovementUpgrade(AssetWithUpgradeBase):
             buff_favorable_wind_angle=wind_angle,
             buff_transfer_speed_upgrade=transfer_speed,
         )
+
+    def serialize_movement_modifiers(self) -> MovementUpgradeJSON:
+        """Serializes naval movement speed adjustment modifiers."""
+        info = self.movement_upgrade_info
+        attributes: List[UpgradeAttributeJSON] = []
+
+        mapping = {
+            "buff_base_speed_upgrade": ("Base Speed", True),
+            "buff_reduce_cargo_impact_upgrade": ("Cargo Impact Reduc.", True),
+            "buff_reduce_damage_impact_upgrade": ("Damage Impact Reduc.", True),
+            "buff_reduce_negative_wind_impact_upgrade": ("Neg. Wind Reduc.", True),
+            "buff_reduce_positive_wind_impact_upgrade": ("Pos. Wind Reduc.", True),
+            "buff_favorable_wind_angle": ("Fav. Wind Angle", False),
+            "buff_transfer_speed_upgrade": ("Transfer Speed", True),
+        }
+
+        for attr_key, (label, is_pct) in mapping.items():
+            val = getattr(info, attr_key)
+            if val != 0.0:
+                attributes.append(
+                    {
+                        "key": attr_key,
+                        "label": label,
+                        "value": str(self._format_attribute(val, is_pct)),
+                        "raw": float(val),
+                    }
+                )
+
+        return {"attributes": attributes}
 
     def print_movement_upgrade_info(self, width: int = 100, indent: str = "") -> None:
         """Helper method to format and print MovementUpgrade values in both tree or boxed layouts."""

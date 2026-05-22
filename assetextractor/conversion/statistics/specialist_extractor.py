@@ -3,14 +3,18 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List, TypedDict, cast
+from typing import TYPE_CHECKING, Dict, List, Sequence, TypedDict, cast
 
 from assetextractor.conversion.statistics.icon_processor import IconProcessor
 from assetextractor.parsing.core.texts import StandardTextConverter
+from assetextractor.parsing.typed.common.asset_pool_base import AssetPoolBase
 from assetextractor.parsing.typed.item import Item, ItemWithBoost
 
 if TYPE_CHECKING:
     from assetextractor.parsing.core.assets import Asset, AssetCache
+    from assetextractor.parsing.typed.common.upgrades.common import UpgradeAttributeJSON
+    from assetextractor.parsing.typed.common.upgrades.factory_upgrade import AddedFertilityJSON
+    from assetextractor.parsing.typed.common.upgrades.maintenance_upgrade import ReplacementWorkforceJSON
 
 # Safely import IPython's display for Jupyter Notebook integration
 try:
@@ -19,18 +23,65 @@ except ImportError:
     display, HTML = None, None  # type: ignore
 
 
+# --- Strictly Typed JSON Schemas ---
+
+
+class ModifierResult(TypedDict):
+    attributes: List[UpgradeAttributeJSON]
+    added_fertility: AddedFertilityJSON | None
+    workforce_replacement: ReplacementWorkforceJSON | None
+
+
+class BuffModifierJSON(TypedDict):
+    guid: int
+    name: str
+    label: str
+    template: str  # e.g., "FactoryBuff", "ResidenceBuff", "ShipBuff"
+    attributes: List[UpgradeAttributeJSON]
+    workforce_replacement: ReplacementWorkforceJSON | None
+    added_fertility: AddedFertilityJSON | None
+
+
+class AffectedItemJSON(TypedDict):
+    guid: int
+    title: str
+
+
+class TargetAssetJSON(TypedDict):
+    guid: int
+    name: str
+    title: str
+    affected_items: List[AffectedItemJSON]
+
+
+class SpecialistEffectJSON(TypedDict):
+    scope: str  # e.g., "AREA", "GLOBAL"
+    category: str  # e.g., "ECONOMIC", "MILITARY"
+    targets: List[TargetAssetJSON]
+    buffs: List[BuffModifierJSON]
+
+
+class SpecialistItemJSON(TypedDict):
+    guid: int
+    name: str
+    title: str
+    description: str
+    icon_url: str
+    rarity: str  # e.g., "COMMON", "EPIC", "LEGENDARY"
+    niche: str  # e.g., "ROMAN", "CELTIC"
+    allocation: str  # e.g., "GUILD_HOUSE", "TOWN_HALL", "HARBOR_MASTER"
+    trade_price: int
+    origin: str
+    has_boost: bool
+    effect: SpecialistEffectJSON | None
+
+
 @dataclass
 class SpecialistCollection:
     """Container for categorized and sorted game assets."""
 
     items: Dict[int, Item] = field(default_factory=lambda: cast("Dict[int, Item]", {}))
     items_with_boost: Dict[int, ItemWithBoost] = field(default_factory=lambda: cast("Dict[int, ItemWithBoost]", {}))
-
-
-class SpecialistItemJSON(TypedDict):
-    """Specialist output JSON structure."""
-
-    pass
 
 
 class SpecialistExtractor:
@@ -105,6 +156,77 @@ class SpecialistExtractor:
         self.specialists = SpecialistCollection(items=sorted_items, items_with_boost=sorted_boosts)
 
         return self.specialists
+
+    # --- Serialization Methods ---
+
+    def _serialize_single_buff_modifiers(self, buff_asset: Asset) -> BuffModifierJSON:
+        """Inspects a buff asset and aggregates all active component modifiers dynamically."""
+        attributes: List[UpgradeAttributeJSON] = []
+        workforce_repl: ReplacementWorkforceJSON | None = None
+        added_fertility_data: AddedFertilityJSON | None = None
+
+        # List all the serialize modifiers methods.
+        modifier_methods = [
+            "serialize_building_modifiers",
+            "serialize_factory_modifiers",
+            "serialize_health_modifiers",
+            "serialize_maintenance_modifiers",
+            "serialize_movement_modifiers",
+            "serialize_residence_modifiers",
+            "serialize_trade_ship_modifiers",
+            "serialize_unit_modifiers",
+            "serialize_vehicle_modifiers",
+            "serialize_area_buff_modifiers",
+        ]
+
+        for method_name in modifier_methods:
+            if hasattr(buff_asset, method_name):
+                # 1. Get the method
+                method = getattr(buff_asset, method_name)
+
+                # 2. Call it and cast to our TypedDict so the type checker
+                #    knows the return structure
+                res = cast("ModifierResult", method())
+
+                # 3. Extend attributes safely
+                if "attributes" in res:
+                    attributes.extend(res["attributes"])
+
+                # 4. Handle specific component side-effects
+                if "added_fertility" in res:
+                    added_fertility_data = res["added_fertility"]
+                if "workforce_replacement" in res:
+                    workforce_repl = res["workforce_replacement"]
+
+        buff_label = buff_asset.text() if buff_asset.text else buff_asset.name
+        return {
+            "guid": buff_asset.guid,
+            "name": buff_asset.name,
+            "label": buff_label,
+            "template": buff_asset.template.name,
+            "attributes": attributes,
+            "workforce_replacement": workforce_repl,
+            "added_fertility": added_fertility_data,
+        }
+
+    def _serialize_targets(self, targets_sequence: Sequence[Asset]) -> List[TargetAssetJSON]:
+        return [self._build_target_node(target) for target in targets_sequence]
+
+    def _build_target_node(self, target_asset: Asset) -> TargetAssetJSON:
+        affected_items: List[AffectedItemJSON] = []
+
+        if isinstance(target_asset, AssetPoolBase):
+            for sub_asset in target_asset.asset_pool_list:
+                affected_items.append(
+                    {"guid": sub_asset.guid, "title": sub_asset.text() if sub_asset.text else sub_asset.name}
+                )
+
+        return {
+            "guid": target_asset.guid,
+            "name": target_asset.name,
+            "title": target_asset.text() if target_asset.text else target_asset.name,
+            "affected_items": affected_items,
+        }
 
     # --- Printing Methods ---
 
@@ -218,7 +340,57 @@ class SpecialistExtractor:
     # --- Export Methods ---
 
     def to_json_dict(self, web_base_path: str | None = None, flatten: bool = True) -> Dict[str, SpecialistItemJSON]:
-        return {}
+        output_dict: Dict[str, SpecialistItemJSON] = {}
+
+        all_specs: List[tuple[Item | ItemWithBoost, bool]] = []
+        for item in self.specialists.items.values():
+            all_specs.append((item, False))
+        for item_boost in self.specialists.items_with_boost.values():
+            all_specs.append((item_boost, True))
+
+        all_specs.sort(key=lambda x: x[0].guid)
+
+        for item, has_boost in all_specs:
+            std = item.item_standard_info
+            info = item.item_info
+            eff_info = item.effect_info
+            item_icon = IconProcessor.get_icon_package(item)
+
+            serialized_targets = self._serialize_targets(item.targets)
+
+            serialized_buffs: List[BuffModifierJSON] = [
+                self._serialize_single_buff_modifiers(buff) for buff in item.buffs
+            ]
+
+            effect_data: SpecialistEffectJSON = {
+                "scope": eff_info.effect_scope,
+                "category": eff_info.source_category,
+                "targets": serialized_targets,
+                "buffs": serialized_buffs,
+            }
+
+            output_dict[str(item.guid)] = {
+                "guid": item.guid,
+                "name": std.std_name,
+                "title": std.title,
+                "description": std.description,
+                "icon_url": IconProcessor.get_final_url(
+                    raw_path=item_icon["path"],
+                    canon_name=item_icon["canon_name"],
+                    web_base_path=web_base_path,
+                    flatten=flatten,
+                    default_name=item.canonical_name,
+                ),
+                "rarity": info.rarity,
+                "niche": info.niche,
+                "allocation": info.allocation,
+                "trade_price": info.trade_price,
+                "origin": info.origin,
+                "has_boost": has_boost,
+                "effect": effect_data,
+            }
+
+        return output_dict
 
     def save_to_json(self, file_path: Path | str, web_base_path: str | None = None, flatten: bool = True):
         """

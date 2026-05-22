@@ -1,11 +1,12 @@
 from dataclasses import dataclass
 from functools import cached_property
-from typing import TYPE_CHECKING, Dict, cast
+from typing import TYPE_CHECKING, Dict, List, TypedDict, cast
 
 from assetextractor.parsing.typed.common.upgrades import (
     AdditionalAttributesInfo,
     AssetWithUpgradeBase,
     FormattedAttributesInfo,
+    UpgradeAttributeJSON,
 )
 
 if TYPE_CHECKING:
@@ -22,6 +23,10 @@ class AreaNeedAttributeBuffInfo:
 
     formatted_bonus_attributes: FormattedAttributesInfo
     """The formatted representation of each attribute, utilizing UI text mapping rules."""
+
+
+class AreaNeedAttributeBuffJSON(TypedDict):
+    attributes: List[UpgradeAttributeJSON]
 
 
 class AreaBuff(AssetWithUpgradeBase, template_names="AreaBuff"):
@@ -71,6 +76,30 @@ class AreaBuff(AssetWithUpgradeBase, template_names="AreaBuff"):
         return AreaNeedAttributeBuffInfo(
             additional_bonus_attributes=add_attributes, formatted_bonus_attributes=formatted_attributes
         )
+
+    def serialize_area_buff_modifiers(self) -> AreaNeedAttributeBuffJSON:
+        """Serializes area adjustments to Web Format."""
+        info = self.area_need_attribute_buff_info
+        attributes: List[UpgradeAttributeJSON] = []
+
+        mapping = {
+            "population": "Population",
+            "money": "Money",
+            "happiness": "Happiness",
+            "health": "Health",
+            "fire_safety": "Fire Safety",
+            "belief": "Belief",
+            "knowledge": "Knowledge",
+            "prestige": "Prestige",
+        }
+
+        for attr_key, label in mapping.items():
+            raw_val = getattr(info.additional_bonus_attributes, attr_key)
+            if raw_val != 0.0:
+                fmt_val = getattr(info.formatted_bonus_attributes, attr_key)
+                attributes.append({"key": attr_key, "label": label, "value": str(fmt_val), "raw": float(raw_val)})
+
+        return {"attributes": attributes}
 
     def print_area_need_attribute_buff_info(self, width: int = 100, indent: str = "") -> None:
         """Helper debugging method to print the active area need attribute buff information.

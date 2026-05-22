@@ -1,13 +1,10 @@
 from dataclasses import dataclass
 from functools import cached_property
-from typing import TYPE_CHECKING, Dict, List, cast
+from typing import TYPE_CHECKING, Dict, List, TypedDict, cast
 
 from assetextractor.parsing.core.assets import Asset
-from assetextractor.parsing.typed.common.upgrades.common import (
-    AdditionalAttributesInfo,
-    AssetWithUpgradeBase,
-    FormattedAttributesInfo,
-)
+
+from .common import AdditionalAttributesInfo, AssetWithUpgradeBase, FormattedAttributesInfo, UpgradeAttributeJSON
 
 if TYPE_CHECKING:
     from assetextractor.parsing.core.attributes import DictAttribute, ListAttribute
@@ -32,16 +29,25 @@ class ResidenceNeedProvidedNeedAttributesInfo:
 class ResidenceUpgradeInfo:
     """The processed 'ResidenceUpgrade' properties as one single object."""
 
-    # provided_need_upgrade: List[]
-
     need_provided_attributes: ResidenceNeedProvidedNeedAttributesInfo
     """The 'NeedProvidedNeedAttributes' processed object."""
 
 
+class ProductNeedUpgradeJSON(TypedDict):
+    guid: int
+    title: str
+
+
+class ResidenceUpgradeJSON(TypedDict):
+    attributes: List[UpgradeAttributeJSON]
+    product_upgrades: List[ProductNeedUpgradeJSON]
+
+
 class AssetWithResidenceUpgrade(AssetWithUpgradeBase):
     """
-    Base class for assets that contain a 'ResidenceUpgrade' property.
-    This consolidates the extraction, formatting, and printing of additional building attributes.
+    Base class for assets that contain a 'ResidenceUpgrade' property. This
+    consolidates the extraction, formatting, printing and structural linking of
+    need modifiers.
     """
 
     @cached_property
@@ -107,6 +113,43 @@ class AssetWithResidenceUpgrade(AssetWithUpgradeBase):
                 change_need_attributes=product_upgrades,
             )
         )
+
+    def serialize_residence_modifiers(self) -> ResidenceUpgradeJSON:
+        """Serializes residence need adjustments and product-specific upgrades to web format."""
+        info = self.residence_upgrade_info
+        attributes: List[UpgradeAttributeJSON] = []
+        product_upgrades: List[ProductNeedUpgradeJSON] = []
+
+        mapping = {
+            "population": "Population",
+            "money": "Money",
+            "happiness": "Happiness",
+            "health": "Health",
+            "fire_safety": "Fire Safety",
+            "belief": "Belief",
+            "knowledge": "Knowledge",
+            "prestige": "Prestige",
+        }
+
+        additional_needs = info.need_provided_attributes.additional_need_attributes
+        formatted_needs = info.need_provided_attributes.formatted_need_attributes
+
+        # General modifiers
+        for attr_key, label in mapping.items():
+            raw_val = cast("float", getattr(additional_needs, attr_key))
+            if raw_val != 0.0:
+                fmt_val = cast("str", getattr(formatted_needs, attr_key))
+                attributes.append({"key": attr_key, "label": label, "value": fmt_val, "raw": float(raw_val)})
+
+        for product_asset in info.need_provided_attributes.change_need_attributes:
+            product_upgrades.append(
+                {
+                    "guid": product_asset.guid,
+                    "title": product_asset.text() if product_asset.text else product_asset.name,
+                }
+            )
+
+        return {"attributes": attributes, "product_upgrades": product_upgrades}
 
     def print_residence_upgrade_info(self, width: int = 100, indent: str = "") -> None:
         """Helper debugging method to print the active residence upgrade information.

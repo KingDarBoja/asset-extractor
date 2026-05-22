@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import cached_property
-from typing import List, cast
+from typing import List, TypedDict, cast
 
-from assetextractor.parsing.typed.common.upgrades.common import AssetWithUpgradeBase
+from .common import AssetWithUpgradeBase, UpgradeAttributeJSON
 
 
 @dataclass(frozen=True)
@@ -16,6 +16,10 @@ class VehicleUpgradeInfo:
 
     activate_pirate_flag: bool
     """Flag enabling pirate state (hostile to neutral ships)."""
+
+
+class VehicleUpgradeJSON(TypedDict):
+    attributes: List[UpgradeAttributeJSON]
 
 
 class AssetWithVehicleUpgrade(AssetWithUpgradeBase):
@@ -31,6 +35,22 @@ class AssetWithVehicleUpgrade(AssetWithUpgradeBase):
         pirate_flag = cast("bool | None", self.find_value("VehicleUpgrade.ActivatePirateFlag")) or False
 
         return VehicleUpgradeInfo(activate_white_flag=white_flag, activate_pirate_flag=pirate_flag)
+
+    def serialize_vehicle_modifiers(self) -> VehicleUpgradeJSON:
+        """Serializes flags determining passive/aggressive naval state behavior."""
+        info = self.vehicle_upgrade_info
+        attributes: List[UpgradeAttributeJSON] = []
+
+        if info.activate_white_flag:
+            attributes.append(
+                {"key": "activate_white_flag", "label": "White Flag State", "value": "Active", "raw": 1.0}
+            )
+        if info.activate_pirate_flag:
+            attributes.append(
+                {"key": "activate_pirate_flag", "label": "Pirate State Toggle", "value": "Active", "raw": 1.0}
+            )
+
+        return {"attributes": attributes}
 
     def print_vehicle_upgrade_info(self, width: int = 100, indent: str = "") -> None:
         """Helper method to format and print VehicleUpgrade behaviors."""

@@ -2,12 +2,24 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import cached_property
-from typing import TYPE_CHECKING, List, cast
+from typing import TYPE_CHECKING, List, TypedDict, cast
 
-from assetextractor.parsing.typed.common.upgrades.common import AssetWithUpgradeBase
+from .common import AssetWithUpgradeBase, UpgradeAttributeJSON
 
 if TYPE_CHECKING:
     from assetextractor.parsing.typed.common.fertility_base import AssetWithFertilityBase
+
+
+class AddedFertilityJSON(TypedDict):
+    guid: int
+    name: str
+    title: str
+    percent: int
+
+
+class FactoryUpgradeJSON(TypedDict):
+    attributes: List[UpgradeAttributeJSON]
+    added_fertility: AddedFertilityJSON | None
 
 
 @dataclass(frozen=True)
@@ -62,6 +74,39 @@ class AssetWithFactoryUpgrade(AssetWithUpgradeBase):
             can_use_forest=can_forest,
             can_use_meadow=can_meadow,
         )
+
+    def serialize_factory_modifiers(self) -> FactoryUpgradeJSON:
+        """Serializes active factory modifiers to web format."""
+        info = self.factory_upgrade_info
+        attributes: List[UpgradeAttributeJSON] = []
+        added_fertility_data: AddedFertilityJSON | None = None
+
+        if info.productivity_upgrade != 0.0:
+            attributes.append(
+                {
+                    "key": "productivity_upgrade",
+                    "label": "Productivity",
+                    "value": str(self._format_attribute(info.productivity_upgrade, is_percent=True)),
+                    "raw": float(info.productivity_upgrade),
+                }
+            )
+        if info.added_fertility is not None:
+            fert_title = info.added_fertility.text() if info.added_fertility.text else info.added_fertility.name
+            added_fertility_data = {
+                "guid": int(info.added_fertility.guid),
+                "name": str(info.added_fertility.name),
+                "title": str(fert_title),
+                "percent": int(info.fertility_percent),
+            }
+
+        if info.can_use_marsh:
+            attributes.append({"key": "can_use_marsh", "label": "Can Use Marsh", "value": "Yes", "raw": 1.0})
+        if info.can_use_forest:
+            attributes.append({"key": "can_use_forest", "label": "Can Use Forest", "value": "Yes", "raw": 1.0})
+        if info.can_use_meadow:
+            attributes.append({"key": "can_use_meadow", "label": "Can Use Meadow", "value": "Yes", "raw": 1.0})
+
+        return {"attributes": attributes, "added_fertility": added_fertility_data}
 
     def print_factory_upgrade_info(self, width: int = 100, indent: str = "") -> None:
         """Helper debugging method to print the active factory upgrade information.

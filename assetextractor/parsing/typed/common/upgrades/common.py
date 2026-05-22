@@ -1,9 +1,15 @@
 from dataclasses import asdict, dataclass
-from typing import Dict
+from typing import Dict, TypedDict
 
 from assetextractor.parsing.core.assets import Asset
 from assetextractor.parsing.core.attributes import DictAttribute
 
+
+class UpgradeAttributeJSON(TypedDict):
+    key: str  # e.g., "maintenance_factor_upgrade", "offense_melee_upgrade"
+    label: str  # e.g., "Maintenance Factor", "Melee Offense"
+    value: str  # e.g., "-15%", "+20"
+    raw: float  # e.g., -0.15, 20.0
 
 @dataclass(frozen=True)
 class AdditionalAttributesInfo:
