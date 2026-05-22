@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from functools import cached_property
 from typing import TYPE_CHECKING, cast
 
+from assetextractor.parsing.core.texts import Text
 from assetextractor.parsing.typed.common.effect_base import AssetWithEffect
 from assetextractor.parsing.typed.common.enums import (
     ItemAllocation,
@@ -61,13 +62,13 @@ class Item(AssetWithEffect, template_names="Item"):
     @cached_property
     def item_standard_info(self) -> ItemStandardInfo:
         """The structured 'Standard' (property) data."""
-        desc_text = cast("str | None", self.find_value("Standard.InfoDescription"))
+        desc_text = cast("Text | None", self.find_value("Standard.InfoDescription"))
         icon_node = self.icon
 
         return ItemStandardInfo(
             std_name=self.name,
             title=self.text() if self.text else "No title",
-            description=desc_text or "No Description",
+            description=desc_text() if desc_text else "No Description",
             icon=icon_node.get_image() if icon_node else None,
         )
 

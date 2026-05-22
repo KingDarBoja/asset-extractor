@@ -3,7 +3,7 @@
 from enum import Enum
 
 
-class BuildingType(Enum):
+class BuildingType(str, Enum):
     """Define the dataset 'BuildingType' that must contain 8 values."""
 
     FACTORY = "Factory"
@@ -16,7 +16,7 @@ class BuildingType(Enum):
     WAREHOUSE = "Warehouse"
 
 
-class Region(Enum):
+class Region(str, Enum):
     """Define the dataset 'Region' that must contain 4 values."""
 
     META = "Meta"
@@ -25,7 +25,7 @@ class Region(Enum):
     EGYPTIAN = "Egyptian"
 
 
-class ScopeVisualization(Enum):
+class ScopeVisualization(str, Enum):
     """Define the dataset 'ScopeVisualization' that must contain 12 values."""
 
     LOCAL = "Local"
@@ -42,7 +42,7 @@ class ScopeVisualization(Enum):
     AREAS_IN_SESSION = "AreasInSession"
 
 
-class BuffCategory(Enum):
+class BuffCategory(str, Enum):
     """
     Define the dataset 'BuffCategory' that must contain 15 values. This comes
     from 'BuffConfig' asset.
@@ -62,7 +62,7 @@ class BuffCategory(Enum):
     # TODO: Complete this. I am lazy atm and just needed the "Item".
 
 
-class ItemAllocation(Enum):
+class ItemAllocation(str, Enum):
     """
     Define the dataset 'ItemAllocation' that must contain 3 values. This comes
     from 'ItemBalancing' asset.
@@ -73,7 +73,7 @@ class ItemAllocation(Enum):
     VILLA = "Villa"
 
 
-class RarityVisualization(Enum):
+class RarityVisualization(str, Enum):
     """
     Define the dataset 'RarityVisualization' that must contain 8 values. This comes
     from 'ItemBalancing' asset.
@@ -89,7 +89,7 @@ class RarityVisualization(Enum):
     UNIQUE = "Unique"
 
 
-class NicheVisualization(Enum):
+class NicheVisualization(str, Enum):
     """
     Define the dataset 'NicheVisualization' that must contain 10 values. This comes
     from 'ItemBalancing' asset.
@@ -107,7 +107,7 @@ class NicheVisualization(Enum):
     NAUTICS = "Nautics"
 
 
-class ItemOrigin(Enum):
+class ItemOrigin(str, Enum):
     """
     Define the dataset 'ItemOrigin' that must contain 5 values. This comes
     from '?' asset.
@@ -117,7 +117,7 @@ class ItemOrigin(Enum):
     DLC_POA = "DLC01"  # Prophecies of Ashes
 
 
-class SlotType(Enum):
+class SlotType(str, Enum):
     """
     Define the dataset 'SlotType' that must contain 7 values. This comes
     from '?' asset.
