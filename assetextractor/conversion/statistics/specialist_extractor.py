@@ -294,20 +294,22 @@ class SpecialistExtractor:
     def _serialize_targets(self, targets_sequence: Sequence[Asset]) -> List[TargetAssetJSON]:
         return [self._build_target_node(target) for target in targets_sequence]
 
+    def _get_flattened_affected_items(self, asset: Asset) -> List[AffectedItemJSON]:
+        """Recursively flattens an asset pool to return only the inner leaf assets."""
+        items: List[AffectedItemJSON] = []
+        if isinstance(asset, AssetPoolBase):
+            for sub_asset in asset.asset_pool_list:
+                items.extend(self._get_flattened_affected_items(sub_asset))
+        else:
+            items.append({"guid": asset.guid, "title": asset.text() if asset.text else asset.name})
+        return items
+
     def _build_target_node(self, target_asset: Asset) -> TargetAssetJSON:
-        affected_items: List[AffectedItemJSON] = []
-
-        if isinstance(target_asset, AssetPoolBase):
-            for sub_asset in target_asset.asset_pool_list:
-                affected_items.append(
-                    {"guid": sub_asset.guid, "title": sub_asset.text() if sub_asset.text else sub_asset.name}
-                )
-
         return {
             "guid": target_asset.guid,
             "name": target_asset.name,
             "title": target_asset.text() if target_asset.text else target_asset.name,
-            "affected_items": affected_items,
+            "affected_items": self._get_flattened_affected_items(target_asset),
         }
 
     # --- Printing Methods ---
