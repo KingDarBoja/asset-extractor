@@ -12,9 +12,11 @@ from assetextractor.parsing.typed.item import Item, ItemWithBoost
 
 if TYPE_CHECKING:
     from assetextractor.parsing.core.assets import Asset, AssetCache
-    from assetextractor.parsing.typed.common.upgrades.common import UpgradeAttributeJSON
+    from assetextractor.parsing.typed.common.upgrades.building_upgrade import WorkforceUpgradeJSON
     from assetextractor.parsing.typed.common.upgrades.factory_upgrade import AddedFertilityJSON
     from assetextractor.parsing.typed.common.upgrades.maintenance_upgrade import ReplacementWorkforceJSON
+    from assetextractor.parsing.typed.common.upgrades.residence_upgrade import ProductNeedUpgradeJSON
+    from assetextractor.parsing.typed.effect import Effect
 
 # Safely import IPython's display for Jupyter Notebook integration
 try:
@@ -26,20 +28,46 @@ except ImportError:
 # --- Strictly Typed JSON Schemas ---
 
 
+class ProductRefJSON(TypedDict):
+    guid: int
+    title: str
+
+
+class ModifierUpgradeAttributeJSON(TypedDict):
+    key: str
+    label: str
+    value: str
+    raw: float
+    # target_guid: int | None
+    product_needs: List[ProductRefJSON]
+    """The formatted requirement 'Product' needs that the 'ResidenceUpgrade' applies."""
+
+
+class AdditionalWorkforceJSON(TypedDict):
+    guid: int
+    title: str
+    # target_guid: int | None
+
+
 class ModifierResult(TypedDict):
-    attributes: List[UpgradeAttributeJSON]
+    attributes: List[ModifierUpgradeAttributeJSON]
     added_fertility: AddedFertilityJSON | None
     workforce_replacement: ReplacementWorkforceJSON | None
+    additional_workforces: List[WorkforceUpgradeJSON] | None
+    product_upgrades: List[ProductNeedUpgradeJSON] | None
+    additional_fun_effect: Effect | None
 
 
 class BuffModifierJSON(TypedDict):
     guid: int
     name: str
     label: str
-    template: str  # e.g., "FactoryBuff", "ResidenceBuff", "ShipBuff"
-    attributes: List[UpgradeAttributeJSON]
+    template: str
+    attributes: List[ModifierUpgradeAttributeJSON]
+    additional_workforces: List[AdditionalWorkforceJSON]
     workforce_replacement: ReplacementWorkforceJSON | None
     added_fertility: AddedFertilityJSON | None
+    nested_functional_effect: SpecialistEffectJSON | None
 
 
 class AffectedItemJSON(TypedDict):
@@ -55,8 +83,8 @@ class TargetAssetJSON(TypedDict):
 
 
 class SpecialistEffectJSON(TypedDict):
-    scope: str  # e.g., "AREA", "GLOBAL"
-    category: str  # e.g., "ECONOMIC", "MILITARY"
+    scope: str
+    category: str
     targets: List[TargetAssetJSON]
     buffs: List[BuffModifierJSON]
 
@@ -67,9 +95,9 @@ class SpecialistItemJSON(TypedDict):
     title: str
     description: str
     icon_url: str
-    rarity: str  # e.g., "COMMON", "EPIC", "LEGENDARY"
-    niche: str  # e.g., "ROMAN", "CELTIC"
-    allocation: str  # e.g., "GUILD_HOUSE", "TOWN_HALL", "HARBOR_MASTER"
+    rarity: str
+    niche: str
+    allocation: str
     trade_price: int
     origin: str
     has_boost: bool
@@ -159,11 +187,18 @@ class SpecialistExtractor:
 
     # --- Serialization Methods ---
 
-    def _serialize_single_buff_modifiers(self, buff_asset: Asset) -> BuffModifierJSON:
+    def _serialize_single_buff_modifiers(self, buff_asset: Asset, effect_targets: Sequence[Asset]) -> BuffModifierJSON:
         """Inspects a buff asset and aggregates all active component modifiers dynamically."""
-        attributes: List[UpgradeAttributeJSON] = []
+        attributes: List[ModifierUpgradeAttributeJSON] = []
+        additional_workforces: List[AdditionalWorkforceJSON] = []
         workforce_repl: ReplacementWorkforceJSON | None = None
         added_fertility_data: AddedFertilityJSON | None = None
+        nested_effect_data: SpecialistEffectJSON | None = None
+
+        # # Resolve primary target GUID for attribute linking (e.g. Eques Residence)
+        # primary_target_guid: int | None = None
+        # if effect_targets:
+        #     primary_target_guid = effect_targets[0].guid
 
         # List all the serialize modifiers methods.
         modifier_methods = [
@@ -188,15 +223,60 @@ class SpecialistExtractor:
                 #    knows the return structure
                 res = cast("ModifierResult", method())
 
+                # If this is serialize_residence_modifiers, capture product reference if present
+                product_refs: List[ProductRefJSON] = []
+                if (
+                    method_name == "serialize_residence_modifiers"
+                    and "product_upgrades" in res
+                    and res["product_upgrades"]
+                ):
+                    product_refs = [{"guid": p["guid"], "title": p["title"]} for p in res["product_upgrades"]]
+
                 # 3. Extend attributes safely
                 if "attributes" in res:
-                    attributes.extend(res["attributes"])
+                    for attr in res["attributes"]:
+                        attributes.append(
+                            {
+                                "key": attr["key"],
+                                "label": attr["label"],
+                                "value": attr["value"],
+                                "raw": attr["raw"],
+                                # "target_guid": primary_target_guid,
+                                "product_needs": product_refs,
+                            }
+                        )
 
                 # 4. Handle specific component side-effects
+                if "additional_workforces" in res and res["additional_workforces"] is not None:
+                    for wf in res["additional_workforces"]:
+                        additional_workforces.append(
+                            {
+                                "guid": wf["guid"],
+                                "title": wf["title"],
+                                # "target_guid": primary_target_guid,
+                            }
+                        )
+
                 if "added_fertility" in res:
                     added_fertility_data = res["added_fertility"]
                 if "workforce_replacement" in res:
                     workforce_repl = res["workforce_replacement"]
+
+                # Check if this result contains a nested effect from BuildingUpgrade
+                if "additional_fun_effect" in res and res["additional_fun_effect"] is not None:
+                    effect_obj = res["additional_fun_effect"]
+                    # Serialize targets and buffs using existing methods
+                    serialized_targets = self._serialize_targets(effect_obj.targets)
+                    serialized_buffs = [
+                        self._serialize_single_buff_modifiers(buff, effect_obj.targets) for buff in effect_obj.buffs
+                    ]
+
+                    nested_effect_data = {
+                        "scope": effect_obj.effect_info.effect_scope,
+                        "category": effect_obj.effect_info.source_category,
+                        "targets": serialized_targets,
+                        "buffs": serialized_buffs,
+                    }
 
         buff_label = buff_asset.text() if buff_asset.text else buff_asset.name
         return {
@@ -205,8 +285,10 @@ class SpecialistExtractor:
             "label": buff_label,
             "template": buff_asset.template.name,
             "attributes": attributes,
+            "additional_workforces": additional_workforces,
             "workforce_replacement": workforce_repl,
             "added_fertility": added_fertility_data,
+            "nested_functional_effect": nested_effect_data,
         }
 
     def _serialize_targets(self, targets_sequence: Sequence[Asset]) -> List[TargetAssetJSON]:
@@ -358,8 +440,9 @@ class SpecialistExtractor:
 
             serialized_targets = self._serialize_targets(item.targets)
 
+            # Map buffs dynamically, linking attributes contextually to their targets and products
             serialized_buffs: List[BuffModifierJSON] = [
-                self._serialize_single_buff_modifiers(buff) for buff in item.buffs
+                self._serialize_single_buff_modifiers(buff, item.targets) for buff in item.buffs
             ]
 
             effect_data: SpecialistEffectJSON = {

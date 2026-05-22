@@ -9,6 +9,7 @@ from .common import AdditionalAttributesInfo, AssetWithUpgradeBase, FormattedAtt
 if TYPE_CHECKING:
     from assetextractor.parsing.core.assets import Asset
     from assetextractor.parsing.core.attributes import DictAttribute, ListAttribute
+    from assetextractor.parsing.typed.effect import Effect
 
 
 class WorkforceUpgradeJSON(TypedDict):
@@ -19,6 +20,7 @@ class WorkforceUpgradeJSON(TypedDict):
 class BuildingUpgradeJSON(TypedDict):
     attributes: List[UpgradeAttributeJSON]
     additional_workforces: List[WorkforceUpgradeJSON]
+    additional_fun_effect: Effect | None
 
 
 @dataclass(frozen=True)
@@ -34,6 +36,9 @@ class BuildingUpgradeInfo:
 
     additional_workforces: List[Asset]
     """A list of resolved Asset references representing extra workforce tiers added to the building."""
+
+    additional_fun_effect: Effect | None
+    """Additional 'Effect' Asset applied by this upgrade."""
 
 
 class AssetWithBuildingUpgrade(AssetWithUpgradeBase):
@@ -93,10 +98,14 @@ class AssetWithBuildingUpgrade(AssetWithUpgradeBase):
                 if wf_asset:
                     additional_workforces.append(wf_asset)
 
+        # Extract additional functional effect if applies.
+        add_fun_effect_asset = cast("Effect | None", self.find_ref("BuildingUpgrade.AdditionalFunctionalEffect"))
+
         return BuildingUpgradeInfo(
             additional_attributes=add_attributes,
             formatted_attributes=formatted_attributes,
             additional_workforces=additional_workforces,
+            additional_fun_effect=add_fun_effect_asset,
         )
 
     def serialize_building_modifiers(self) -> BuildingUpgradeJSON:
@@ -127,7 +136,11 @@ class AssetWithBuildingUpgrade(AssetWithUpgradeBase):
         for wf in info.additional_workforces:
             additional_workforces.append({"guid": wf.guid, "title": wf.text() if wf.text else wf.name})
 
-        return {"attributes": attributes, "additional_workforces": additional_workforces}
+        return {
+            "attributes": attributes,
+            "additional_workforces": additional_workforces,
+            "additional_fun_effect": info.additional_fun_effect,
+        }
 
     def print_building_upgrade_info(self, width: int = 100, indent: str = "") -> None:
         """Helper debugging method to print the active building upgrade information.
