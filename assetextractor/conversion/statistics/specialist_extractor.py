@@ -56,6 +56,7 @@ class ModifierResult(TypedDict):
     additional_workforces: List[WorkforceUpgradeJSON] | None
     product_upgrades: List[ProductNeedUpgradeJSON] | None
     additional_fun_effect: Effect | None
+    workforce_modifier_in_percent: str | None
 
 
 class BuffModifierJSON(TypedDict):
@@ -68,6 +69,7 @@ class BuffModifierJSON(TypedDict):
     workforce_replacement: ReplacementWorkforceJSON | None
     added_fertility: AddedFertilityJSON | None
     nested_functional_effect: SpecialistEffectJSON | None
+    workforce_modifier_in_percent: str | None
 
 
 class AffectedItemJSON(TypedDict):
@@ -118,7 +120,7 @@ class SimplifiedBuff(TypedDict):
     additional_workforces: List[int]
     added_fertility: AddedFertilityJSON | None  # Keeps the structure from AddedFertilityJSON
     workforce_replacement: ReplacementWorkforceJSON | None  # Keeps the structure from ReplacementWorkforceJSON
-
+    workforce_modifier_in_percent: str | None
 
 class SimplifiedTarget(TypedDict):
     affected_items: List[int]
@@ -234,6 +236,7 @@ class SpecialistExtractor:
         workforce_repl: ReplacementWorkforceJSON | None = None
         added_fertility_data: AddedFertilityJSON | None = None
         nested_effect_data: SpecialistEffectJSON | None = None
+        workforce_mod: str | None = None
 
         # List all the serialize modifiers methods.
         modifier_methods = [
@@ -289,6 +292,9 @@ class SpecialistExtractor:
                     added_fertility_data = res["added_fertility"]
                 if "workforce_replacement" in res:
                     workforce_repl = res["workforce_replacement"]
+                if "workforce_modifier_in_percent" in res:
+                    workforce_mod = res["workforce_modifier_in_percent"]
+
 
                 # Check if this result contains a nested effect from BuildingUpgrade
                 if "additional_fun_effect" in res and res["additional_fun_effect"] is not None:
@@ -315,6 +321,7 @@ class SpecialistExtractor:
             "workforce_replacement": workforce_repl,
             "added_fertility": added_fertility_data,
             "nested_functional_effect": nested_effect_data,
+            "workforce_modifier_in_percent": workforce_mod,
         }
 
     def _serialize_targets(self, targets_sequence: Sequence[Asset]) -> List[TargetAssetJSON]:
@@ -491,6 +498,7 @@ class SpecialistExtractor:
                     "additional_workforces": [w["guid"] for w in serialized_buff["additional_workforces"]],
                     "added_fertility": serialized_buff["added_fertility"],
                     "workforce_replacement": serialized_buff["workforce_replacement"],
+                    "workforce_modifier_in_percent": serialized_buff.get("workforce_modifier_in_percent")
                 }
 
                 simplified_data[str(item.guid)]["effect"]["buffs"].append(buff_entry)

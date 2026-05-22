@@ -21,6 +21,7 @@ class BuildingUpgradeJSON(TypedDict):
     attributes: List[UpgradeAttributeJSON]
     additional_workforces: List[WorkforceUpgradeJSON]
     additional_fun_effect: Effect | None
+    workforce_modifier_in_percent: str
 
 
 @dataclass(frozen=True)
@@ -39,6 +40,12 @@ class BuildingUpgradeInfo:
 
     additional_fun_effect: Effect | None
     """Additional 'Effect' Asset applied by this upgrade."""
+
+    attribute_modifier_in_percent: float
+    """"""
+
+    workforce_modifier_in_percent: float
+    """The percentage of workforce provided by this upgrade."""
 
 
 class AssetWithBuildingUpgrade(AssetWithUpgradeBase):
@@ -101,11 +108,21 @@ class AssetWithBuildingUpgrade(AssetWithUpgradeBase):
         # Extract additional functional effect if applies.
         add_fun_effect_asset = cast("Effect | None", self.find_ref("BuildingUpgrade.AdditionalFunctionalEffect"))
 
+        # The extra modifiers.
+        attribute_modifier_in_percent = (
+            cast("float | None", self.find_value("BuildingUpgrade.AttributeModifierInPercent")) or 0.0
+        )
+        workforce_modifier_in_percent = (
+            cast("float | None", self.find_value("BuildingUpgrade.WorkforceModifierInPercent")) or 0.0
+        )
+
         return BuildingUpgradeInfo(
             additional_attributes=add_attributes,
             formatted_attributes=formatted_attributes,
             additional_workforces=additional_workforces,
             additional_fun_effect=add_fun_effect_asset,
+            attribute_modifier_in_percent=attribute_modifier_in_percent,
+            workforce_modifier_in_percent=workforce_modifier_in_percent,
         )
 
     def serialize_building_modifiers(self) -> BuildingUpgradeJSON:
@@ -140,6 +157,7 @@ class AssetWithBuildingUpgrade(AssetWithUpgradeBase):
             "attributes": attributes,
             "additional_workforces": additional_workforces,
             "additional_fun_effect": info.additional_fun_effect,
+            "workforce_modifier_in_percent": self._format_attribute(info.workforce_modifier_in_percent, True),
         }
 
     def print_building_upgrade_info(self, width: int = 100, indent: str = "") -> None:
@@ -152,6 +170,10 @@ class AssetWithBuildingUpgrade(AssetWithUpgradeBase):
         info = self.building_upgrade_info
         if not info:
             return
+
+        if info.workforce_modifier_in_percent != 0.0:
+            fmt = self._format_attribute(info.workforce_modifier_in_percent, True)
+            print(f"{indent}├── [Workforce Modifier]: {fmt}")
 
         self._print_upgrade_info_base(
             raw=info.additional_attributes,
