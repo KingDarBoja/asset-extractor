@@ -4,7 +4,9 @@ from dataclasses import dataclass
 from functools import cached_property
 from typing import TYPE_CHECKING, cast
 
-from assetextractor.parsing.core.texts import Text
+from assetextractor.conversion.statistics.boost_conditions import BoostConditionParser
+from assetextractor.parsing.core.attributes import ListAttribute
+from assetextractor.parsing.typed.buffs import BUFF_CLASSES, BuffKey
 from assetextractor.parsing.typed.common.effect_base import AssetWithEffect
 from assetextractor.parsing.typed.common.enums import (
     ItemAllocation,
@@ -15,6 +17,7 @@ from assetextractor.parsing.typed.common.enums import (
 
 if TYPE_CHECKING:
     from assetextractor.parsing.core.attributes import WandImageProto
+    from assetextractor.parsing.core.texts import Text
 
 
 @dataclass(frozen=True)
@@ -28,6 +31,20 @@ class ItemStandardInfo:
     description: str
     """The localized asset description. Comes from 'Standard.InfoDescription'."""
     icon: WandImageProto | None
+
+
+@dataclass(frozen=True)
+class ItemBoostInfo:
+    """The structured 'ItemWithBoost' properties as one single object."""
+
+    boost_condition: str
+    """The parsed boost condition text."""
+
+    boost_hint: str
+    """The localized boost hint text. Comes from 'ItemWithBoost.BoostHint'."""
+
+    boost_buffs: list[BuffKey]
+    """List of boost buffs applied to the targets. Comes from 'ItemWithBoost.BoostBuffs'."""
 
 
 @dataclass(frozen=True)
@@ -101,4 +118,33 @@ class ItemWithBoost(Item, template_names="ItemWithBoost"):
     stored.
     """
 
-    pass
+    @cached_property
+    def boost_info(self) -> ItemBoostInfo:
+        """The structured 'ItemWithBoost' data."""
+        # Parse the condition using the parser
+        parser = BoostConditionParser(self.cache, self.cache.texts)
+        condition_str = parser.parse(self)
+
+        # Extract boost hint text if available
+        hint_text = cast("Text | None", self.find_value("ItemWithBoost.BoostHint"))
+
+        # Extract boost buffs
+        boost_buffs: list[BuffKey] = []
+        boost_buffs_attr = self.find("ItemWithBoost.BoostBuffs")
+        if isinstance(boost_buffs_attr, ListAttribute):
+            for entry in boost_buffs_attr:
+                buff = entry.find_ref("GUID")
+                if isinstance(buff, BUFF_CLASSES):
+                    boost_buffs.append(buff)
+
+        return ItemBoostInfo(
+            boost_condition=condition_str, boost_hint=hint_text() if hint_text else "No hint", boost_buffs=boost_buffs
+        )
+
+    def print_boost_info(self, prefix: str = "") -> None:
+        """Prints the boost condition, hint, and boost buffs in a tree-style format."""
+        b_info = self.boost_info
+        print(f"{prefix}Boost Condition: {b_info.boost_condition}")
+        if b_info.boost_hint and b_info.boost_hint != "No hint":
+            print(f"{prefix}Boost Hint:      {b_info.boost_hint}")
+        self.print_buffs(b_info.boost_buffs, prefix=prefix)

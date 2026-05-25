@@ -12,6 +12,7 @@ from assetextractor.parsing.typed.item import Item, ItemWithBoost
 
 if TYPE_CHECKING:
     from assetextractor.parsing.core.assets import Asset, AssetCache
+    from assetextractor.parsing.typed.buffs import BuffKey
     from assetextractor.parsing.typed.common.upgrades.building_upgrade import WorkforceUpgradeJSON
     from assetextractor.parsing.typed.common.upgrades.factory_upgrade import AddedFertilityJSON
     from assetextractor.parsing.typed.common.upgrades.maintenance_upgrade import ReplacementWorkforceJSON
@@ -81,6 +82,8 @@ class TargetAssetJSON(TypedDict):
     guid: int
     name: str
     title: str
+    asset_pool_guid: int | None
+    asset_pool_title: str | None
     affected_items: List[AffectedItemJSON]
 
 
@@ -88,6 +91,12 @@ class SpecialistEffectJSON(TypedDict):
     scope: str
     category: str
     targets: List[TargetAssetJSON]
+    buffs: List[BuffModifierJSON]
+
+
+class SpecialistBoostJSON(TypedDict):
+    condition: str
+    hint: str
     buffs: List[BuffModifierJSON]
 
 
@@ -103,6 +112,7 @@ class SpecialistItemJSON(TypedDict):
     trade_price: int
     origin: str
     has_boost: bool
+    boost_details: SpecialistBoostJSON | None
     effect: SpecialistEffectJSON | None
 
 
@@ -116,6 +126,8 @@ class SimplifiedAttribute(TypedDict):
 
 
 class SimplifiedBuff(TypedDict):
+    guid: int
+    target_guids: List[int]
     attributes: List[SimplifiedAttribute]
     additional_workforces: List[int]
     added_fertility: AddedFertilityJSON | None  # Keeps the structure from AddedFertilityJSON
@@ -124,6 +136,9 @@ class SimplifiedBuff(TypedDict):
 
 
 class SimplifiedTarget(TypedDict):
+    guid: int
+    asset_pool_guid: int | None
+    asset_pool_title: str | None
     affected_items: List[int]
 
 
@@ -134,6 +149,12 @@ class SimplifiedEffect(TypedDict):
     buffs: List[SimplifiedBuff]
 
 
+class SimplifiedBoost(TypedDict):
+    condition: str
+    hint: str
+    buffs: List[SimplifiedBuff]
+
+
 class SimplifiedSpecialist(TypedDict):
     icon_url: str
     title: str
@@ -141,6 +162,8 @@ class SimplifiedSpecialist(TypedDict):
     rarity: str
     niche: str
     allocation: str
+    has_boost: bool
+    boost_details: SimplifiedBoost | None
     effect: SimplifiedEffect
 
 
@@ -339,16 +362,21 @@ class SpecialistExtractor:
         return items
 
     def _build_target_node(self, target_asset: Asset) -> TargetAssetJSON:
+        is_named_pool = target_asset.template.name == "AssetPoolNamed"
         return {
             "guid": target_asset.guid,
             "name": target_asset.name,
             "title": target_asset.text() if target_asset.text else target_asset.name,
+            "asset_pool_guid": target_asset.guid if is_named_pool else None,
+            "asset_pool_title": (target_asset.text() if target_asset.text else target_asset.name)
+            if is_named_pool
+            else None,
             "affected_items": self._get_flattened_affected_items(target_asset),
         }
 
     # --- Printing Methods ---
 
-    def print_specialists(self, guid: int | None = None):
+    def print_specialists(self, guid: int | None = None) -> None:
         """
         Prints details for stored specialists.
 
@@ -371,7 +399,7 @@ class SpecialistExtractor:
             for guid in sorted(all_specialists.keys()):
                 self._print_single_specialist(all_specialists[guid])
 
-    def _print_single_specialist(self, item: Item):
+    def _print_single_specialist(self, item: Item) -> None:
         """Internal helper to format and print the properties of a single specialist."""
         is_boost = isinstance(item, ItemWithBoost)
         type_label = "SPECIALIST (WITH BOOST)" if is_boost else "SPECIALIST"
@@ -443,8 +471,10 @@ class SpecialistExtractor:
         print(f"Trade Price:   {info.trade_price}")
         print(f"Origin:        {info.origin.value if hasattr(info.origin, 'value') else info.origin}")
 
-        # Specialists don't use the localized chain matching structure of Patrons,
-        # so we pass an empty dict safely to comply with AssetWithEffect's print signature.
+        if is_boost:
+            print(f"{'-' * self.print_width}")
+            item.print_boost_info(prefix="     ")
+            print(f"{'-' * self.print_width}")
 
         # We pass a starting branch to frame the buffs
         item.print_buffs(item.buffs, prefix="     ")
@@ -457,7 +487,9 @@ class SpecialistExtractor:
 
     # --- Export Methods ---
 
-    def export_simplified_json(self, output_path: Path | str, web_base_path: str | None = None, flatten: bool = True):
+    def export_simplified_json(
+        self, output_path: Path | str, web_base_path: str | None = None, flatten: bool = True
+    ) -> None:
         """
         Exports a minimalist JSON representation where nested GUIDs, templates,
         and name properties are stripped.
@@ -482,21 +514,34 @@ class SpecialistExtractor:
                 "rarity": item.item_info.rarity,
                 "niche": item.item_info.niche,
                 "allocation": item.item_info.allocation,
+                "has_boost": isinstance(item, ItemWithBoost),
+                "boost_details": None,
                 "effect": {
                     "scope": item.effect_info.effect_scope,
                     "category": item.effect_info.source_category,
                     "targets": [
-                        {"affected_items": [i["guid"] for i in self._get_flattened_affected_items(t)]}
+                        {
+                            "guid": t.guid,
+                            "asset_pool_guid": t.guid if t.template.name == "AssetPoolNamed" else None,
+                            "asset_pool_title": (t.text() if t.text else t.name)
+                            if t.template.name == "AssetPoolNamed"
+                            else None,
+                            "affected_items": [i["guid"] for i in self._get_flattened_affected_items(t)],
+                        }
                         for t in item.targets
                     ],
                     "buffs": [],
                 },
             }
 
-            for b in item.buffs:
+            main_target_guids = [t.guid for t in item.targets]
+
+            def process_buff_entry(b: BuffKey, target_buff_list: List[SimplifiedBuff]) -> None:
                 serialized_buff = self._serialize_single_buff_modifiers(b)
 
                 buff_entry: SimplifiedBuff = {
+                    "guid": serialized_buff["guid"],
+                    "target_guids": main_target_guids,
                     "attributes": [
                         {
                             "key": attr["key"],
@@ -511,14 +556,66 @@ class SpecialistExtractor:
                     "workforce_modifier_in_percent": serialized_buff.get("workforce_modifier_in_percent"),
                 }
 
-                simplified_data[str(item.guid)]["effect"]["buffs"].append(buff_entry)
+                target_buff_list.append(buff_entry)
+
+                nested_effect = serialized_buff.get("nested_functional_effect")
+                if nested_effect:
+                    nested_target_guids = [nt["guid"] for nt in nested_effect["targets"]]
+
+                    existing_target_guids = {t["guid"] for t in simplified_data[str(item.guid)]["effect"]["targets"]}
+                    for nt in nested_effect["targets"]:
+                        if nt["guid"] not in existing_target_guids:
+                            simplified_data[str(item.guid)]["effect"]["targets"].append(
+                                {
+                                    "guid": nt["guid"],
+                                    "asset_pool_guid": nt.get("asset_pool_guid"),
+                                    "asset_pool_title": nt.get("asset_pool_title"),
+                                    "affected_items": [ai["guid"] for ai in nt["affected_items"]],
+                                }
+                            )
+                            existing_target_guids.add(nt["guid"])
+
+                    for nb in nested_effect["buffs"]:
+                        nested_buff_entry: SimplifiedBuff = {
+                            "guid": nb["guid"],
+                            "target_guids": nested_target_guids,
+                            "attributes": [
+                                {
+                                    "key": attr["key"],
+                                    "value": attr["value"],
+                                    "product_needs": [p["guid"] for p in attr["product_needs"]],
+                                }
+                                for attr in nb["attributes"]
+                            ],
+                            "additional_workforces": [w["guid"] for w in nb["additional_workforces"]],
+                            "added_fertility": nb["added_fertility"],
+                            "workforce_replacement": nb["workforce_replacement"],
+                            "workforce_modifier_in_percent": nb.get("workforce_modifier_in_percent"),
+                        }
+                        target_buff_list.append(nested_buff_entry)
+
+            for b in item.buffs:
+                process_buff_entry(b, simplified_data[str(item.guid)]["effect"]["buffs"])
+
+            if isinstance(item, ItemWithBoost):
+                b_info = item.boost_info
+                boost_details: SimplifiedBoost = {
+                    "condition": b_info.boost_condition,
+                    "hint": b_info.boost_hint,
+                    "buffs": [],
+                }
+                simplified_data[str(item.guid)]["boost_details"] = boost_details
+                for b in b_info.boost_buffs:
+                    process_buff_entry(b, boost_details["buffs"])
 
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(simplified_data, f, indent=4)
 
         print(f"Simplified export completed to {output_path}")
 
-    def export_assets_index_json(self, output_path: Path, web_base_path: str | None = None, flatten: bool = True):
+    def export_assets_index_json(
+        self, output_path: Path, web_base_path: str | None = None, flatten: bool = True
+    ) -> None:
         """
         Exports an index of all referenced affected items, workforce replacements,
         and additional workforces as a JSON dictionary mapping GUIDs to
@@ -526,7 +623,7 @@ class SpecialistExtractor:
         """
         assets_registry: Dict[str, Dict[str, str]] = {}
 
-        def register(guid: int, title: str, asset: Asset | None = None):
+        def register(guid: int, title: str, asset: Asset | None = None) -> None:
             if str(guid) in assets_registry:
                 return
 
@@ -618,6 +715,15 @@ class SpecialistExtractor:
                 "buffs": serialized_buffs,
             }
 
+            boost_details: SpecialistBoostJSON | None = None
+            if has_boost and isinstance(item, ItemWithBoost):
+                b_info = item.boost_info
+                boost_details = {
+                    "condition": b_info.boost_condition,
+                    "hint": b_info.boost_hint,
+                    "buffs": [self._serialize_single_buff_modifiers(b) for b in b_info.boost_buffs],
+                }
+
             output_dict[str(item.guid)] = {
                 "guid": item.guid,
                 "name": std.std_name,
@@ -636,12 +742,13 @@ class SpecialistExtractor:
                 "trade_price": info.trade_price,
                 "origin": info.origin,
                 "has_boost": has_boost,
+                "boost_details": boost_details,
                 "effect": effect_data,
             }
 
         return output_dict
 
-    def save_to_json(self, file_path: Path | str, web_base_path: str | None = None, flatten: bool = True):
+    def save_to_json(self, file_path: Path | str, web_base_path: str | None = None, flatten: bool = True) -> None:
         """
         Helper to write the exported dictionary to a physical file.
 

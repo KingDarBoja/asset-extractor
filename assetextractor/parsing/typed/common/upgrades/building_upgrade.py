@@ -179,6 +179,17 @@ class AssetWithBuildingUpgrade(AssetWithUpgradeBase):
             fmt = self._format_attribute(info.workforce_modifier_in_percent, True)
             print(f"{indent}├── [Workforce Modifier]: {fmt}")
 
+        if info.additional_workforces:
+            for wf in info.additional_workforces:
+                print(f"{indent}├── [Additional Workforce]: {wf.text() if wf.text else wf.name} (GUID: {wf.guid})")
+
+        if info.additional_fun_effect:
+            af = info.additional_fun_effect
+            print(f"{indent}├── [Additional Functional Effect]: {af.text() if af.text else af.name} (GUID: {af.guid})")
+            child_prefix = indent + "│   "
+            af.print_buffs(af.buffs, prefix=child_prefix)
+            af.print_targets(af.targets, {}, prefix=child_prefix)
+
         self._print_upgrade_info_base(
             raw=info.additional_attributes,
             fmt=info.formatted_attributes,
