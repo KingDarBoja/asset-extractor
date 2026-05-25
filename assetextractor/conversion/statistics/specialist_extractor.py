@@ -122,6 +122,7 @@ class SimplifiedBuff(TypedDict):
     workforce_replacement: ReplacementWorkforceJSON | None  # Keeps the structure from ReplacementWorkforceJSON
     workforce_modifier_in_percent: str | None
 
+
 class SimplifiedTarget(TypedDict):
     affected_items: List[int]
 
@@ -134,6 +135,7 @@ class SimplifiedEffect(TypedDict):
 
 
 class SimplifiedSpecialist(TypedDict):
+    icon_url: str
     title: str
     description: str
     rarity: str
@@ -295,7 +297,6 @@ class SpecialistExtractor:
                 if "workforce_modifier_in_percent" in res:
                     workforce_mod = res["workforce_modifier_in_percent"]
 
-
                 # Check if this result contains a nested effect from BuildingUpgrade
                 if "additional_fun_effect" in res and res["additional_fun_effect"] is not None:
                     effect_obj = res["additional_fun_effect"]
@@ -456,7 +457,7 @@ class SpecialistExtractor:
 
     # --- Export Methods ---
 
-    def export_simplified_json(self, output_path: Path | str):
+    def export_simplified_json(self, output_path: Path | str, web_base_path: str | None = None, flatten: bool = True):
         """
         Exports a minimalist JSON representation where nested GUIDs, templates,
         and name properties are stripped.
@@ -466,7 +467,16 @@ class SpecialistExtractor:
         all_specs = list(self.specialists.items.values()) + list(self.specialists.items_with_boost.values())
 
         for item in all_specs:
+            item_icon = IconProcessor.get_icon_package(item)
+
             simplified_data[str(item.guid)] = {
+                "icon_url": IconProcessor.get_final_url(
+                    raw_path=item_icon["path"],
+                    canon_name=item_icon["canon_name"],
+                    web_base_path=web_base_path,
+                    flatten=flatten,
+                    default_name=item.canonical_name,
+                ),
                 "title": item.item_standard_info.title,
                 "description": item.item_standard_info.description,
                 "rarity": item.item_info.rarity,
@@ -498,7 +508,7 @@ class SpecialistExtractor:
                     "additional_workforces": [w["guid"] for w in serialized_buff["additional_workforces"]],
                     "added_fertility": serialized_buff["added_fertility"],
                     "workforce_replacement": serialized_buff["workforce_replacement"],
-                    "workforce_modifier_in_percent": serialized_buff.get("workforce_modifier_in_percent")
+                    "workforce_modifier_in_percent": serialized_buff.get("workforce_modifier_in_percent"),
                 }
 
                 simplified_data[str(item.guid)]["effect"]["buffs"].append(buff_entry)

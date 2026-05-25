@@ -21,7 +21,7 @@ class BuildingUpgradeJSON(TypedDict):
     attributes: List[UpgradeAttributeJSON]
     additional_workforces: List[WorkforceUpgradeJSON]
     additional_fun_effect: Effect | None
-    workforce_modifier_in_percent: str
+    workforce_modifier_in_percent: str | None
 
 
 @dataclass(frozen=True)
@@ -153,11 +153,15 @@ class AssetWithBuildingUpgrade(AssetWithUpgradeBase):
         for wf in info.additional_workforces:
             additional_workforces.append({"guid": wf.guid, "title": wf.text() if wf.text else wf.name})
 
+        wmip: str | None = None
+        if info.workforce_modifier_in_percent != 0.0:
+            wmip = self._format_attribute(info.workforce_modifier_in_percent, True)
+
         return {
             "attributes": attributes,
             "additional_workforces": additional_workforces,
             "additional_fun_effect": info.additional_fun_effect,
-            "workforce_modifier_in_percent": self._format_attribute(info.workforce_modifier_in_percent, True),
+            "workforce_modifier_in_percent": wmip,
         }
 
     def print_building_upgrade_info(self, width: int = 100, indent: str = "") -> None:
