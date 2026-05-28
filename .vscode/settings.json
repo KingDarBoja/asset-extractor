@@ -3,10 +3,7 @@
     "python.analysis.autoImportCompletions": true,
     "python.analysis.typeCheckingMode": "strict",
     "python.analysis.diagnosticMode": "workspace",
-    "python.analysis.exclude": [
-        "build*",
-        ".nox*",
-    ],
+    "python.analysis.exclude": ["build*", ".nox*"],
     "editor.formatOnSave": true,
     "[python]": {
         "editor.defaultFormatter": "charliermarsh.ruff"
@@ -17,13 +14,12 @@
     "jupyter.autoStartServer": true,
     "jupyter.enableAutoMatting": true,
     "jupyter.enablePlotViewer": true,
-    "jupyter.interactiveWindow.textEditor.executeSelection": "sendToInteractiveWindow",
     "jupyter.notebookFileRoot": "${workspaceFolder}",
     "jupyter.output.textEditorLimit": 1000000,
     "jupyter.showVariableExplorer": true,
     "files.autoSave": "afterDelay",
     "files.autoSaveDelay": 1000,
-    "workbench.editor.enablePreview": false,
+    "workbench.editor.enablePreview": true,
     "workbench.editor.enablePreviewFromQuickOpen": false,
     "files.watcherExclude": {
         "**/node_modules/**": true,
