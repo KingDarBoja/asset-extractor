@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Dict, List, Sequence, TypedDict, cast
 from assetextractor.conversion.statistics.icon_processor import IconProcessor
 from assetextractor.parsing.core.texts import StandardTextConverter
 from assetextractor.parsing.typed.common.asset_pool_base import AssetPoolBase
+from assetextractor.parsing.typed.common.enums import RarityVisualization
 from assetextractor.parsing.typed.item import Item, ItemWithBoost
 
 if TYPE_CHECKING:
@@ -499,6 +500,14 @@ class SpecialistExtractor:
         all_specs = list(self.specialists.items.values()) + list(self.specialists.items_with_boost.values())
 
         for item in all_specs:
+            # Filter out those specialist by rarity (unused rarities: Quest, Narrative & Uncommon)
+            if item.item_info.rarity in [
+                RarityVisualization.QUEST,
+                RarityVisualization.UNCOMMON,
+                RarityVisualization.NARRATIVE,
+            ]:
+                continue
+
             item_icon = IconProcessor.get_icon_package(item)
 
             simplified_data[str(item.guid)] = {
@@ -696,6 +705,14 @@ class SpecialistExtractor:
         all_specs.sort(key=lambda x: x[0].guid)
 
         for item, has_boost in all_specs:
+            # Filter out those specialist by rarity (unused rarities: Quest, Narrative & Uncommon)
+            if item.item_info.rarity in [
+                RarityVisualization.QUEST,
+                RarityVisualization.UNCOMMON,
+                RarityVisualization.NARRATIVE,
+            ]:
+                continue
+
             std = item.item_standard_info
             info = item.item_info
             eff_info = item.effect_info
@@ -769,6 +786,7 @@ class SpecialistExtractor:
         quality: int = 75,
         resize: tuple[int, int] | None = (128, 128),
         flatten: bool = False,
+        export_ref_assets: bool = False,
     ) -> None:
         """
         Exports all item-related assets.
@@ -788,6 +806,7 @@ class SpecialistExtractor:
             standard_assets.append(specialist)
 
         # Batch export all standard icons at 128x128
+
         print(f"Exporting {len(standard_assets)} specialist icons...")
         IconProcessor.export_icons(
             assets=standard_assets,
@@ -797,3 +816,72 @@ class SpecialistExtractor:
             resize=resize,
             use_canonical_name=True,
         )
+        print(f"Finished exporting {len(standard_assets)} specialist icons.")
+
+        # Only export reference asset icons if allowed.
+        if export_ref_assets:
+            print("Seeding reference assets registry...")
+            # Store the guid already visited to de-duplicate data.
+            assets_registry: List[int] = []
+            ref_assets: List[Asset] = []
+
+            def register(guid: int, asset: Asset | None = None) -> None:
+                if guid in assets_registry:
+                    return
+
+                if asset:
+                    ref_assets.append(asset)
+
+                assets_registry.append(guid)
+
+            # Traverse all specialists
+            all_specs = list(self.specialists.items.values()) + list(self.specialists.items_with_boost.values())
+
+            for item in all_specs:
+                # 1. Affected Items (Targets)
+                for target in item.targets:
+                    leaf_items = self._get_flattened_affected_items(target)
+                    for leaf in leaf_items:
+                        # Attempt to retrieve asset object via cache
+                        asset = self.assets.get(leaf["guid"])
+                        register(leaf["guid"], asset)
+
+                # 2. Buffs
+                for buff in item.buffs:
+                    serialized = self._serialize_single_buff_modifiers(buff)
+
+                    # Additional Workforces
+                    for aw in serialized["additional_workforces"]:
+                        asset = self.assets.get(aw["guid"])
+                        register(aw["guid"], asset)
+
+                    # Workforce Replacement
+                    wr = serialized["workforce_replacement"]
+                    if wr:
+                        # Assuming ReplacementWorkforceJSON has 'guid' and 'title' keys
+                        ow_asset = cast("Asset | None", self.assets.get(wr["old_workforce_guid"]))
+                        nw_asset = cast("Asset | None", self.assets.get(wr["new_workforce_guid"]))
+
+                        if ow_asset:
+                            register(ow_asset.guid, ow_asset)
+
+                        if nw_asset:
+                            register(nw_asset.guid, nw_asset)
+
+                    # Product Needs (New)
+                    for attr in serialized["attributes"]:
+                        for pn in attr.get("product_needs", []):
+                            asset = self.assets.get(pn["guid"])
+                            register(pn["guid"], asset)
+
+            # Export all reference assets.
+            print(f"Exporting {len(ref_assets)} reference asset icons...")
+            IconProcessor.export_icons(
+                assets=ref_assets,
+                output_base=output_path,
+                flatten=flatten,
+                quality=quality,
+                resize=resize,
+                use_canonical_name=True,
+            )
+            print(f"Finished exporting {len(ref_assets)} reference asset icons...")
