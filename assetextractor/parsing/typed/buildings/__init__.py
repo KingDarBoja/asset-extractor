@@ -10,3 +10,5 @@ from .mini_institution_building import *
 from .ornamental_building import *
 from .public_service_building import *
 from .residence_building import *
+from .trade_building import *
+from .villa_urban import *

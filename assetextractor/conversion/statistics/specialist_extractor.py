@@ -683,11 +683,21 @@ class SpecialistExtractor:
                     if nw_asset:
                         register(nw_asset.guid, nw_asset.text() if nw_asset.text else nw_asset.name, nw_asset)
 
-                # Product Needs (New)
+                # Product Needs.
                 for attr in serialized["attributes"]:
                     for pn in attr.get("product_needs", []):
                         asset = self.assets.get(pn["guid"])
                         register(pn["guid"], pn["title"], asset)
+
+                # Additional Functional Effect Items (Targets)
+                nfe = serialized["nested_functional_effect"]
+                if nfe:
+                    for nfe_target in nfe["targets"]:
+                        leaf_nfe_items = nfe_target["affected_items"]
+                        for leaf in leaf_nfe_items:
+                            # Attempt to retrieve asset object via cache
+                            asset = self.assets.get(leaf["guid"])
+                            register(leaf["guid"], leaf["title"], asset)
 
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(assets_registry, f, indent=4)
@@ -873,6 +883,16 @@ class SpecialistExtractor:
                         for pn in attr.get("product_needs", []):
                             asset = self.assets.get(pn["guid"])
                             register(pn["guid"], asset)
+
+                    # Additional Functional Effect Items (Targets)
+                    nfe = serialized["nested_functional_effect"]
+                    if nfe:
+                        for nfe_target in nfe["targets"]:
+                            leaf_nfe_items = nfe_target["affected_items"]
+                            for leaf in leaf_nfe_items:
+                                # Attempt to retrieve asset object via cache
+                                asset = self.assets.get(leaf["guid"])
+                                register(leaf["guid"], asset)
 
             # Export all reference assets.
             print(f"Exporting {len(ref_assets)} reference asset icons...")
