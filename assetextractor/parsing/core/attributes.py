@@ -5,6 +5,7 @@ import datetime
 import logging
 import typing as t
 from contextlib import suppress
+from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 
@@ -481,6 +482,75 @@ class PrimitiveAttribute(Attribute["MetaPropertyCache", bool | str | float | int
             return None
 
 
+@dataclass
+class AnnoColor:
+    """
+    Provides robust conversion utilities for Anno's 32-bit signed integer colors.
+    Correctly handles Python's arbitrary-precision integer bitwise operations.
+    """
+
+    # RGB values from 0-255 (0x00-0xFF)
+    red: int
+    green: int
+    blue: int
+    alpha: int  # Opacity (0 = transparent, 255 = completely opaque)
+
+    # The raw signed 32-bit integer representation stored in Anno's XMLs
+    anno_int: int
+
+    # A hex string representation of the RGBA values (0xRRGGBBAA)
+    rgba_hex: str
+
+    @property
+    def rgba_tuple(self) -> t.Tuple[int, int, int, int]:
+        """Returns the color as a standard (R, G, B, A) tuple."""
+        return (self.red, self.green, self.blue, self.alpha)
+
+    @property
+    def hex_web(self) -> str:
+        """Returns the web-standard #RRGGBBAA string."""
+        return f"#{self.red:02x}{self.green:02x}{self.blue:02x}{self.alpha:02x}"
+
+    @staticmethod
+    def rgba_to_hex_string(red: int, green: int, blue: int, alpha: int) -> str:
+        """Helper to format RGBA values into a 0xRRGGBBAA hex string."""
+        val = (red << 24) | (green << 16) | (blue << 8) | alpha
+        return f"0x{val:08x}"
+
+    @staticmethod
+    def from_anno_integer(anno_int: int) -> "AnnoColor":
+        """
+        Converts Anno's 32-bit signed integer color to an AnnoColor object.
+        Uses bitwise masking (& 0xFFFFFFFF) to correctly handle Python's 2's complement.
+        """
+        # Python uses arbitrary-precision integers. Masking with 32 bits
+        # correctly reconstructs the unsigned 32-bit value (ARGB format).
+        val = anno_int & 0xFFFFFFFF
+
+        alpha = (val >> 24) & 0xFF
+        red = (val >> 16) & 0xFF
+        green = (val >> 8) & 0xFF
+        blue = val & 0xFF
+
+        rgba_hex = AnnoColor.rgba_to_hex_string(red, green, blue, alpha)
+        return AnnoColor(red, green, blue, alpha, anno_int, rgba_hex)
+
+    @staticmethod
+    def from_rgba(red: int, green: int, blue: int, alpha: int) -> "AnnoColor":
+        """Converts RGBA color channels back to Anno's signed 32-bit integer."""
+        # Arrange channels in ARGB format
+        unsigned_val = (alpha << 24) | (red << 16) | (green << 8) | blue
+
+        # Convert unsigned 32-bit int back to a signed 32-bit integer (2's complement)
+        if unsigned_val & 0x80000000:  # noqa: SIM108
+            signed_val = unsigned_val - (1 << 32)
+        else:
+            signed_val = unsigned_val
+
+        rgba_hex = AnnoColor.rgba_to_hex_string(red, green, blue, alpha)
+        return AnnoColor(red, green, blue, alpha, signed_val, rgba_hex)
+
+
 class ColorAttribute(Attribute["MetaPropertyCache", dict[str, int] | int]):
     """Represents a color attribute that can handle both single value and dictionary-like XML structures."""
 
@@ -521,6 +591,31 @@ class ColorAttribute(Attribute["MetaPropertyCache", dict[str, int] | int]):
         if isinstance(self.value, dict):
             return f"{self.name}: {self.value}"
         return f"{self.name}: {self.value}"
+
+    def _get_anno_color(self, color_mode: str) -> AnnoColor | None:
+        """Internal helper to resolve the value to an AnnoColor object."""
+        if self.value is None:
+            return None
+
+        if isinstance(self.value, int):
+            return AnnoColor.from_anno_integer(self.value)
+
+        target_int = self.value.get(color_mode) or self.value.get("None")
+        if target_int is not None:
+            return AnnoColor.from_anno_integer(target_int)
+        return None
+
+    def get_hex(self, color_mode: t.Literal["None", "Deuteranopia", "Protanopia", "Tritanopia"] = "None") -> str | None:
+        """Returns the color as a web-standard hex string: #RRGGBBAA."""
+        color = self._get_anno_color(color_mode)
+        return color.hex_web if color else None
+
+    def get_rgba(
+        self, color_mode: t.Literal["None", "Deuteranopia", "Protanopia", "Tritanopia"] = "None"
+    ) -> t.Tuple[int, int, int, int] | None:
+        """Returns the color as an (R, G, B, A) tuple."""
+        color = self._get_anno_color(color_mode)
+        return color.rgba_tuple if color else None
 
 
 class TextAttribute(Attribute["MetaPropertyCache", Text]):
