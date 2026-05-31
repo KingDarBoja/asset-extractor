@@ -2,13 +2,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import cached_property
-from typing import TYPE_CHECKING, List, cast
+from typing import TYPE_CHECKING, List, Union, cast
 
 from assetextractor.parsing.core.assets import Asset
 from assetextractor.parsing.typed.common.enums import BuildingType, Region
+from assetextractor.parsing.typed.construction_category import ConstructionCategory
+from assetextractor.parsing.typed.ownership import UplayProduct
 
 if TYPE_CHECKING:
     from assetextractor.parsing.core.texts import Text
+
+
+OriginHintType = Union[UplayProduct, ConstructionCategory]
 
 
 @dataclass(frozen=True)
@@ -18,10 +23,24 @@ class Building:
     category_name: str
     """Localized category name. Comes from 'Building.BuildingCategoryName'."""
     associated_regions: List[Region]
+    """The associated ingame region that this building can be used on."""
+    origin_hint: OriginHintType | None
+    """The asset that unlocks this building. If None, means this
+    building is unlocked by default in the base game."""
 
 
 class AssetWithBuilding(Asset):
     """Base class for assets that contain a 'Building' object."""
+
+    @cached_property
+    def origin_hint_ui(self) -> str:
+        """
+        Format the origin hint from the localized asset text. This can be 'Hall
+        of Fame', 'Prophecies of Ash', etc.If not defined, set to 'Base' as
+        default.
+        """
+        hint_asset = self.building_info.origin_hint
+        return hint_asset.text() if hint_asset and hint_asset.text else "Base"
 
     @cached_property
     def building_info(self) -> Building:
@@ -34,7 +53,10 @@ class AssetWithBuilding(Asset):
         raw_regions = cast("List[Region] | None", self.find_value("Building.AssociatedRegions"))
         regions = raw_regions if raw_regions else []
 
-        return Building(type=building_type, category_name=cat_name, associated_regions=regions)
+        # Get the asset 'UplayProduct' or 'ConstructionCategory' that unlocks this building (if applies).
+        origin_hint = cast("OriginHintType | None", self.find_ref("Building.OriginHint"))
+
+        return Building(type=building_type, category_name=cat_name, associated_regions=regions, origin_hint=origin_hint)
 
         # if self.assets.properties.ui_text_cache and isinstance(source_cat_attr, Attribute):
         #     source_cat_literal = source_cat_attr()

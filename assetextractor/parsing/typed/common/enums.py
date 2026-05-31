@@ -113,8 +113,13 @@ class ItemOrigin(str, Enum):
     from '?' asset.
     """
 
+    TESTING = "Testing"
     BASE_RELEASE = "BaseRelease"  # Vanilla
+    PREORDER = "PreOrder"  # Mostly for ornaments and logos.
+    TWITCH_DROP = "TwitchDrop"  # Mostly ornaments and logos.
     DLC_POA = "DLC01"  # Prophecies of Ashes
+    DLC_HIPO = "DLC02"  # Assuming this is gonna be for Hippodrome.
+    DLC_EGYPT = "DLC03"  # Assuming this is gonna be for Dawn of the Delta.
 
 
 class SlotType(str, Enum):
@@ -123,6 +128,24 @@ class SlotType(str, Enum):
     from '?' asset.
     """
 
-    MOUNTAIN = "Mountain"
     NONE = "None"
+    COAST = "Coast"
     RIVER = "River"
+    CLAIMING = "ClaimingBuilding"
+    MOUNTAIN = "Mountain"
+    WORKAREA = "WorkArea"
+    MARSH = "Marsh"
+
+
+class UplayProductType(str, Enum):
+    """
+    Define the dataset 'UplayProductType' that must contain 6 values. This comes
+    from '?' asset.
+    """
+
+    SEASON_PASS = "SeasonPass"
+    DLC = "DLC"
+    COSMETIC_DLC = "CosmeticDLC"
+    PREORDER_BONUS = "PreOrderBonus"
+    TWITCH_DROP = "TwitchDrop"
+    LANGUAGE_PACK = "LanguagePack"

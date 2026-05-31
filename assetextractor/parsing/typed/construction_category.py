@@ -7,7 +7,6 @@ from assetextractor.parsing.core.assets import Asset
 
 if TYPE_CHECKING:
     from assetextractor.parsing.core.attributes import ListAttribute
-    from assetextractor.parsing.core.texts import Text
 
 
 class ConstructionCategory(Asset, template_names="ConstructionCategory"):
@@ -24,5 +23,4 @@ class ConstructionCategory(Asset, template_names="ConstructionCategory"):
 
     @cached_property
     def localized_title(self) -> str:
-        text = cast("Text | None", self.find_value("Text.OasisId"))
-        return text() if text else "No Title"
+        return self.text() if self.text else "No Title"
