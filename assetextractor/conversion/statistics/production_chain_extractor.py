@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, TypedDict
 
 from assetextractor.conversion.statistics.icon_processor import IconProcessor
 from assetextractor.parsing.core.texts import StandardTextConverter
+from assetextractor.parsing.typed.common.enums import Region
 from assetextractor.parsing.typed.production_chain import ProductionChain, ProductionChainBase
 
 if TYPE_CHECKING:
@@ -20,6 +21,7 @@ class BuildingNodeJSON(TypedDict):
     icon_url: str
     canon_name: str
     tier: List[BuildingNodeJSON]
+    region: List[Region]
 
 
 class ProductionChainJSON(TypedDict):
@@ -150,7 +152,7 @@ class ProductionChainExtractor:
             export_data[str(guid)] = {
                 "uid": chain.guid,
                 "canon_name": chain.canonical_name,
-                "name": chain.name,
+                "name": chain.text() if chain.text else chain.name,
                 "description": chain.localized_description,
                 "output_building": self._node_to_json_dict(chain_base, web_base_path, flatten, level=0),
             }
@@ -177,12 +179,19 @@ class ProductionChainExtractor:
             default_name="building_icon",
         )
 
+        # Handle the case of another template like "AqueductDistributor", that
+        # does not have "Building" data.
+        region_val = (
+            b.building_info.associated_regions if hasattr(b, "building_info") else [Region.CELTIC, Region.ROMAN]
+        )
+
         return {
             "guid": b.guid if b else 0,
             "std_name": b.name if b else "Unknown",
             "text": self._get_text(b) if b else "N/A",
             "icon_url": icon_url,
             "canon_name": b.canonical_name if b else "unknown",
+            "region": region_val,
             "tier": [self._node_to_json_dict(child, web_base_path, flatten, level + 1) for child in node.tier],
         }
 
