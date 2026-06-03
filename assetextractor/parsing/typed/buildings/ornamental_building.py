@@ -10,8 +10,16 @@ if TYPE_CHECKING:
     from assetextractor.parsing.core.texts import Text
 
 
-class OrnamentalBuilding(AssetWithCosts, AssetWithBuilding, template_names=["OrnamentalBuilding", "PolygonObject"]):
-    """Specialized Asset for 'OrnamentalBuilding' and 'PolygonObject' with pre-computed data."""
+class OrnamentalBuilding(
+    AssetWithCosts, AssetWithBuilding, template_names=["OrnamentalBuilding", "PolygonObject", "Hedge"]
+):
+    """
+    Specialized Asset for 'OrnamentalBuilding', 'PolygonObject' and 'Hedge' with
+    pre-computed data.
+
+    Both 'PolygonObject' and 'Hedge' do not have an 'Ornament' object so handle
+    these scenarios with the proper defaults.
+    """
 
     @cached_property
     def prestige(self) -> int:
@@ -23,5 +31,10 @@ class OrnamentalBuilding(AssetWithCosts, AssetWithBuilding, template_names=["Orn
 
     @cached_property
     def localized_description(self) -> str:
-        text = cast("Text | None", self.find_value("Ornament.OrnamentDescription"))
-        return text() if text else "No Description"
+        info_desc = cast("Text | None", self.find_value("Standard.InfoDescription"))
+        std_desc = info_desc() if info_desc else "No Description"
+        if self.template.name in {"PolygonObject", "Hedge"}:
+            return std_desc
+        else:
+            orn_desc = cast("Text | None", self.find_value("Ornament.OrnamentDescription"))
+            return orn_desc() if orn_desc else std_desc
