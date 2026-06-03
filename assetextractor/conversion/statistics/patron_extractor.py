@@ -7,12 +7,14 @@ from typing import TYPE_CHECKING, Dict, List, Sequence, TypedDict, Union, cast
 
 from assetextractor.conversion.statistics.icon_processor import IconProcessor
 from assetextractor.parsing.core.texts import StandardTextConverter, Text
+from assetextractor.parsing.typed.buffs.building_buff import BuildingBuff
 from assetextractor.parsing.typed.common.asset_pool_base import AssetPoolBase
 from assetextractor.parsing.typed.patron import Patron
 from assetextractor.parsing.typed.production_chain import ProductionChain
 
 if TYPE_CHECKING:
     from assetextractor.parsing.core.assets import Asset, AssetCache
+    from assetextractor.parsing.typed.common.upgrades.common import UpgradeAttributeJSON
     from assetextractor.parsing.typed.effect import Effect
     from assetextractor.parsing.typed.factories import AssetFactoryBase
     from assetextractor.parsing.typed.production_chain import ProductionChainBase
@@ -80,6 +82,8 @@ class ShrineItemJSON(TypedDict):
 class ShrineEffectJSON(TypedDict):
     title: str
     guid: int
+    attributes: Dict[str, List[UpgradeAttributeJSON]]
+    """Store the formatted attributes info per functional effect within this shrine."""
     shrines: List[ShrineItemJSON]
 
 
@@ -474,7 +478,26 @@ class PatronExtractor:
 
             # 4. Shrine Effect
             shrine = patron.shrine_effect
-            shrine_json: ShrineEffectJSON = {"title": shrine.name, "guid": shrine.guid, "shrines": []}
+
+            # Store each shrine buff attributes per effect. The key is the effect guid.
+            shrine_attrs: Dict[str, List[UpgradeAttributeJSON]] = {}
+
+            # Usually the shrine attributes are the same as both assets points to the same "BuildingBuff".
+            shrine_fun_effects = shrine.shrines[0].building_info.func_effects
+            for shrine_eff in shrine_fun_effects:
+                # Shrines (like most assets) only have one buff item.
+                shrine_eff_buff = shrine_eff.effect_info.buffs[0]
+                if isinstance(shrine_eff_buff, BuildingBuff):
+                    shrine_eff_modifiers = shrine_eff_buff.serialize_building_modifiers()
+                    shrine_up_attrs = shrine_eff_modifiers.get("attributes")
+                    shrine_attrs[str(shrine_eff.guid)] = shrine_up_attrs
+
+            shrine_json: ShrineEffectJSON = {
+                "title": shrine.name,
+                "guid": shrine.guid,
+                "attributes": shrine_attrs,
+                "shrines": [],
+            }
 
             for shrine_asset in shrine.shrines:
                 shrine_icon = IconProcessor.get_icon_package(shrine_asset)

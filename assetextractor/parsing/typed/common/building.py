@@ -10,7 +10,9 @@ from assetextractor.parsing.typed.construction_category import ConstructionCateg
 from assetextractor.parsing.typed.ownership import UplayProduct
 
 if TYPE_CHECKING:
+    from assetextractor.parsing.core.attributes import ListAttribute
     from assetextractor.parsing.core.texts import Text
+    from assetextractor.parsing.typed.effect import Effect
 
 
 OriginHintType = Union[UplayProduct, ConstructionCategory]
@@ -27,6 +29,8 @@ class Building:
     origin_hint: OriginHintType | None
     """The asset that unlocks this building. If None, means this
     building is unlocked by default in the base game."""
+    func_effects: List[Effect]
+    """The list of 'Effect' assets applied to this building, otherwise empty."""
 
 
 class AssetWithBuilding(Asset):
@@ -56,7 +60,21 @@ class AssetWithBuilding(Asset):
         # Get the asset 'UplayProduct' or 'ConstructionCategory' that unlocks this building (if applies).
         origin_hint = cast("OriginHintType | None", self.find_ref("Building.OriginHint"))
 
-        return Building(type=building_type, category_name=cat_name, associated_regions=regions, origin_hint=origin_hint)
+        # Get the asset list of functional effects.
+        func_effects_list = cast("ListAttribute | None", self.find_value("Building.FunctionalEffects"))
+        func_effects: List[Effect] = []
+        if func_effects_list:
+            for item in func_effects_list:
+                item_fun_effect = cast("Effect", item.find_ref("FunctionalEffect"))
+                func_effects.append(item_fun_effect)
+
+        return Building(
+            type=building_type,
+            category_name=cat_name,
+            associated_regions=regions,
+            origin_hint=origin_hint,
+            func_effects=func_effects,
+        )
 
         # if self.assets.properties.ui_text_cache and isinstance(source_cat_attr, Attribute):
         #     source_cat_literal = source_cat_attr()
