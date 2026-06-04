@@ -1,9 +1,9 @@
 """These are merely used for intellisense or easier conversion to JSON schemas."""
 
-from enum import Enum
+from enum import StrEnum
 
 
-class BuildingType(str, Enum):
+class BuildingType(StrEnum):
     """Define the dataset 'BuildingType' that must contain 8 values."""
 
     FACTORY = "Factory"
@@ -16,7 +16,7 @@ class BuildingType(str, Enum):
     WAREHOUSE = "Warehouse"
 
 
-class Region(str, Enum):
+class Region(StrEnum):
     """Define the dataset 'Region' that must contain 4 values."""
 
     META = "Meta"
@@ -25,7 +25,45 @@ class Region(str, Enum):
     EGYPTIAN = "Egyptian"
 
 
-class ScopeVisualization(str, Enum):
+class IslandType(StrEnum):
+    """Define the dataset 'IslandType' that must contain 8 values."""
+
+    NORMAL = "Normal"
+    STARTER = "Starter"
+    DECORATION = "Decoration"
+    THIRD_PARTY = "ThirdParty"
+    PIRATE_ISLAND = "PirateIsland"
+    CLIFF_ISLAND = "CliffIsland"
+    RESERVED_FOR_PLAYER = "ReservedForPlayer"
+    VOLCANIC_ISLAND = "VolcanicIsland"
+
+
+class IslandSize(StrEnum):
+    SMALL = "Small"
+    MEDIUM = "Medium"
+    LARGE = "Large"
+    XL = "XL"
+    CONTINENTAL = "Continental"
+
+
+class IslandGameType(StrEnum):
+    SANDBOX_SINGLEPLAYER = "SandboxSingleplayer"
+    SANDBOX_MULTIPLAYER = "SandboxMultilayer"
+    CAMPAIGN_MODE = "CampaignMode"
+
+
+class IslandDifficulty(StrEnum):
+    NORMAL = "Normal"
+    HARD = "Hard"
+
+
+class ResourceAmount(StrEnum):
+    LOW = "Low"
+    MEDIUM = "Medium"
+    HIGH = "High"
+
+
+class ScopeVisualization(StrEnum):
     """Define the dataset 'ScopeVisualization' that must contain 12 values."""
 
     LOCAL = "Local"
@@ -42,7 +80,7 @@ class ScopeVisualization(str, Enum):
     AREAS_IN_SESSION = "AreasInSession"
 
 
-class BuffCategory(str, Enum):
+class BuffCategory(StrEnum):
     """
     Define the dataset 'BuffCategory' that must contain 15 values. This comes
     from 'BuffConfig' asset.
@@ -62,7 +100,7 @@ class BuffCategory(str, Enum):
     # TODO: Complete this. I am lazy atm and just needed the "Item".
 
 
-class ItemAllocation(str, Enum):
+class ItemAllocation(StrEnum):
     """
     Define the dataset 'ItemAllocation' that must contain 3 values. This comes
     from 'ItemBalancing' asset.
@@ -73,7 +111,7 @@ class ItemAllocation(str, Enum):
     VILLA = "Villa"
 
 
-class RarityVisualization(str, Enum):
+class RarityVisualization(StrEnum):
     """
     Define the dataset 'RarityVisualization' that must contain 8 values. This comes
     from 'ItemBalancing' asset.
@@ -89,7 +127,7 @@ class RarityVisualization(str, Enum):
     UNIQUE = "Unique"
 
 
-class NicheVisualization(str, Enum):
+class NicheVisualization(StrEnum):
     """
     Define the dataset 'NicheVisualization' that must contain 10 values. This comes
     from 'ItemBalancing' asset.
@@ -107,7 +145,7 @@ class NicheVisualization(str, Enum):
     NAUTICS = "Nautics"
 
 
-class ItemOrigin(str, Enum):
+class ItemOrigin(StrEnum):
     """
     Define the dataset 'ItemOrigin' that must contain 5 values. This comes
     from '?' asset.
@@ -122,7 +160,7 @@ class ItemOrigin(str, Enum):
     DLC_EGYPT = "DLC03"  # Assuming this is gonna be for Dawn of the Delta.
 
 
-class SlotType(str, Enum):
+class SlotType(StrEnum):
     """
     Define the dataset 'SlotType' that must contain 7 values. This comes
     from '?' asset.
@@ -137,7 +175,7 @@ class SlotType(str, Enum):
     MARSH = "Marsh"
 
 
-class UplayProductType(str, Enum):
+class UplayProductType(StrEnum):
     """
     Define the dataset 'UplayProductType' that must contain 6 values. This comes
     from '?' asset.
