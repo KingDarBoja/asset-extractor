@@ -33,9 +33,41 @@ The calculator notebook (`assetextractor/conversion/calculator/conversion_calcul
 
 - **Cell 5**: Builds `dlc_prefix_map` (DLC ID → GUID) and `params.dlcs`
 - **Cell `62e20e5a`**: Builds `dlc_unlock_map` and defines `get_unlocks(asset)`
-- **Cells 16–48**: Output sections (`fertilities`, `needs`, `products`, `factories`, `buildingBuffs`, `effects`, `techs`, `items`)
+- **Cells 16–50**: Output sections (`fertilities`, `needs`, `products`, `factories`, `buildingBuffs`, `effects`, `techs`, `items`); two cells inserted after the `effects` cell (`aa99b634`) — `mythical0items01` and `mythical0needs01` — derive `source: "mythical-item"` effect entries from every `Item.Rarity=="Mythic"`/`Item.Allocation=="Villa"` item with an island-wide (`EffectScope=="ObjectsInArea"`) `MythicEffect` referencing a `relevant_buffs` buff (no hardcoded GUID list, so new DLC items are picked up automatically), and inject matching `residenceBuildings[].needsList[]` entries (with `requiresItem` gating) for any of those buffs' `additionalNeedsDemand`
 
 Run the notebook top-to-bottom to regenerate `params.js` after any changes to extraction logic or game data.
+
+---
+
+## Domain Extractors (`statistics/`)
+
+Merged from KingDarBoja's PR #7. Each reads a loaded `AssetCache` and emits simplified JSON (and, where relevant, exported icons via `IconProcessor`). They rely on the typed subclasses in `assetextractor/parsing/typed/`, which are applied automatically by `AssetCache.load()`.
+
+| Extractor | Class | Companion notebook |
+|-----------|-------|--------------------|
+| `patron_extractor.py` | `PatronExtractor` | `patrons.ipynb` |
+| `ornaments_extractor.py` | `OrnamentsExtractor` | `ornaments.ipynb` |
+| `production_chain_extractor.py` | `ProductionChainExtractor` | `production_chains.ipynb` |
+| `specialist_extractor.py` | `SpecialistExtractor` | `specialists.ipynb` |
+| `fertility_set_extractor.py` | `FertilitySetExtractor` | — |
+| `icon_processor.py` | `IconProcessor` (shared: `save_image`, mirrored/flattened path options) | — |
+
+Typical usage (see the companion notebook for the full flow):
+
+```python
+config = Config.from_json("config.json")
+assets = AssetCache.load(config)          # typed subclasses applied here
+assets.texts.converter = StandardTextConverter("english")
+data = SpecialistExtractor(assets).extract_all()   # -> dict/JSON-ready
+```
+
+New dev-only deps used by these scripts: `matplotlib`, `networkx` (production-chain graphs). Install with `uv sync --extra dev` (or `uv run` auto-syncs).
+
+> Note: `reworked_item_extractor.py` (a separate WIP file) imports `BaseAssetFields`/`BuffAsset` from `parsing.core.assets`, which do **not** exist in the codebase — it fails at import and is unrelated to the extractors above.
+
+### Item CSV Pipeline (separate from the table above)
+
+The **working**, currently-used item extractor is `item_extractor.py` (`ItemExtractor`), not `reworked_item_extractor.py`. It is driven by `extract_items_to_csv.py --version X` (invoked from `new_version.bat`, see `docs/development.md`), and delegates boost-condition text to `boost_conditions.py::BoostConditionParser`. Item sources come from `item_sources.py::ItemSourceTracker`. Boost condition types handled (13 original + `ConditionFestivalActive`/`ConditionRaceOutcome`/`ConditionCompareVariable` added 2026-08-20) are documented in `docs/conditions.md`; any condition type not in that list falls back to the literal string `"Boost condition active"` in the CSV — grep for that string to find gaps.
 
 ---
 
@@ -209,9 +241,9 @@ Cells updated to call `get_unlocks(asset)`:
 | 30 | `products` | |
 | 35 | `factories` | includes production buildings and mines |
 | 39 | `buildingBuffs` | |
-| 40 | `effects` | |
-| 42 | `techs` | |
-| 48 | `items` | |
+| 40 | `effects` | produced by cell `aa99b634`; also includes `source: "mythical-item"` entries from the two cells inserted after it |
+| 44 | `techs` | shifted +2 by the mythical-item cell insertions |
+| 50 | `items` | shifted +2 by the mythical-item cell insertions |
 
 ### DLC Region Filtering (Cell 113 & 117)
 

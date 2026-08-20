@@ -194,6 +194,44 @@ When a Matcher reference exists at `ObjectFilter.Matcher`, parse the `MatcherCri
 
 **Output**: `"Items in storage"`
 
+### 14. ConditionFestivalActive
+
+**Description**: A festival must be active. The `Festival` reference is optional — when unset (the default), any active festival satisfies the condition; when set, only that specific festival counts.
+
+**Format**: `"Festival: {festival_name}"` or `"Any festival active"`
+
+**Examples**:
+- `"Any festival active"` (GUID 160060, `Festival` left at its default `None`)
+- `"Festival: Festival of Happiness"` (hypothetical, if `Festival` were set)
+
+### 15. ConditionRaceOutcome
+
+**Description**: Requires a specific outcome in a Hippodrome race event — some combination of the event, finish position, and racer, each gated by its own `CheckXxx` boolean.
+
+**Format**: `"{Event}; Finish position {operator} {amount}; Racer: {racer_name}"` (only the parts whose `CheckXxx` flag is true are included, joined with `"; "`)
+
+**Fields**:
+- `CheckEventGuid` / `CompareEventGuid`: specific race event (e.g. Imperial Races)
+- `CheckRaceFinishPosition` / `CompareRaceFinishPosition` / `CompareRaceFinishPositionOperator`: finish position threshold
+- `CheckRacerGuid` / `CompareRacerGuid`: specific racer
+
+**Example**: `"Imperial Races; Finish position >= 1"` (GUID 156726)
+
+**Fallback**: `"Race outcome required"` (if no `CheckXxx` flag is set)
+
+### 16. ConditionCompareVariable
+
+**Description**: Compares a named session/global variable (`VariableToCheck`, a free-form string) against a literal carried in `SecondVariable`, an `AutoCreateAsset` that holds exactly one of `BoolVariableOrValue`, `IntVariableOrValue`, `FloatVariableOrValue`, `AssetVariableOrValue`, or `StringVariableOrValue`.
+
+**Format**:
+- Boolean: `"{VariableToCheck} {operator} Yes"` / `"...No"`
+- Numeric: `"{VariableToCheck} {operator} {amount}"`
+- Asset/String: `"{VariableToCheck}: {value}"`
+
+**Example**: `"PopularityMax >= Yes"` (GUID 157292 — `VariableToCheck="PopularityMax"`, `ComparisonOperation="AtLeast"`, `SecondVariable.BoolVariableOrValue.BoolValue=True`)
+
+**Fallback**: `"{VariableToCheck} comparison required"` (if `SecondVariable` has no recognized literal set)
+
 ## Comparison Operators
 
 Used across multiple condition types:
@@ -267,6 +305,9 @@ Conditions are checked in order:
 11. ConditionMonumentEventsActive
 12. ConditionWarState
 13. ConditionInStorage
+14. ConditionFestivalActive
+15. ConditionRaceOutcome
+16. ConditionCompareVariable
 
 **Return Early**: Once a condition is successfully parsed, return immediately (don't check remaining types).
 
@@ -383,7 +424,7 @@ Potential improvements:
 
 ## Related Files
 
-- **Implementation**: `assetextractor/conversion/statistics/extract_items.ipynb` (Cell 6)
+- **Implementation**: `assetextractor/conversion/statistics/boost_conditions.py` (`BoostConditionParser`), used by `item_extractor.py`
 - **Tests**: `tests/integration/test_item_extraction_accuracy.py`
 - **Manual Corrections**: `results/tables/items_english_v1.3_manual_corrections.csv`
 - **Asset Browser**: Shows conditions in HTML format at `C:/temp/assetbrowser-2025-12-08/`

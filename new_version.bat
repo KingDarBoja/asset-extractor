@@ -71,6 +71,7 @@ if errorlevel 1 (
 
 pause
 
+:skip_main
 :: Step 3: Zip the results
 echo.
 echo ============================================================
@@ -83,7 +84,12 @@ for /f "tokens=2 delims==" %%I in ('wmic os get localdatetime /value') do set da
 set DATE_STAMP=%datetime:~0,4%-%datetime:~4,2%-%datetime:~6,2%
 
 set ARCHIVE_NAME=assetbrowser-%DATE_STAMP%.7z
-set ASSETBROWSER_DIR=..\assetbrowser
+
+for /f "usebackq delims=" %%I in (`uv run python -c "import json; print(json.load(open('config.json'))['assetbrowser_dir'])"`) do set ASSETBROWSER_DIR=%%I
+if "%ASSETBROWSER_DIR%"=="" (
+    echo Error: Could not read assetbrowser_dir from config.json
+    exit /b 1
+)
 
 echo Creating archive: %ARCHIVE_NAME%
 echo Source directory: %ASSETBROWSER_DIR%
@@ -95,7 +101,7 @@ if errorlevel 1 (
     echo Warning: 7-Zip not found, skipping archive creation.
     goto skip_archive
 )
-7z a -t7z -m0=lzma2 -mx=7 -md=1024m "%ARCHIVE_NAME%" ".\%ASSETBROWSER_DIR%\*"
+7z a -t7z -m0=lzma2 -mx=7 -md=1024m "%ARCHIVE_NAME%" "%ASSETBROWSER_DIR%\*" -xr^^!.git
 if errorlevel 1 (
     echo Error: Archive creation failed
     exit /b 1

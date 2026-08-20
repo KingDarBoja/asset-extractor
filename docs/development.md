@@ -62,19 +62,26 @@ Paths may be relative (resolved from `config.json` location) or absolute.
 
 ## Release Workflow
 
-`new_version.bat`:
+`new_version.bat` is the **authoritative** way to (re)generate the asset browser and the versioned items CSV — prefer it (or its individual steps below) over ad-hoc notebook cells or scripts:
 1. Prompts for version number.
 2. Runs `extract.cmd`.
 3. Runs `main.py --version` (generates browser + snapshot + report; loads assets once).
-4. Creates `assetbrowser-YYYY-MM-DD.7z` (LZMA2, 1GB dict, level 7) from `config.assetbrowser_dir`.
-5. Exports items to Google Sheets (optional, needs `gsheet_credentials.json`).
+4. Runs `uv run python -m assetextractor.conversion.statistics.extract_items_to_csv --version "X"`, writing `results/tables/items_english_X.csv` via `ItemExtractor` (`item_extractor.py`, which uses `BoostConditionParser` from `boost_conditions.py`).
+5. Creates `assetbrowser-YYYY-MM-DD.7z` (LZMA2, 1GB dict, level 7) from `config.assetbrowser_dir`.
+6. Exports items to Google Sheets (optional, needs `gsheet_credentials.json`).
 
 Requirements: 7-Zip in PATH; Google Sheets credentials are optional.
+
+Note: `reworked_item_extractor.py` is a separate WIP file with broken imports (see `assetextractor/conversion/AGENTS.md`) — it is unrelated to this pipeline.
 
 `main.py --version` details:
 - `create_snapshot()` accepts an optional `assets` argument to avoid double-loading.
 - Version report is auto-generated when 2+ versions exist in the DB.
 - `--prev-version` overrides the default (latest − 1) comparison base.
+
+## Typed Asset Subclasses
+
+Game-domain `Asset` subclasses live in `assetextractor/parsing/typed/`. Each subclass declares its XML template name(s) once (via `template_names=`) and is auto-registered; no other file needs updating. See `assetextractor/parsing/typed/README.md` for the full guide — including multi-template mapping, abstract base conventions, and `BaseAssetGUID` upgrade caveats.
 
 ## VS Code
 

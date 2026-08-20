@@ -99,6 +99,19 @@ Province Egyptian Aegyptus - 149679
 
 **Pattern**: This only triggers when a `DefaultContainerValues` entry sets a `template_name` on a vector item's default in an overwritten group. If no `DefaultContainerValues` applies, the default's `template_name` stays `None` and the early-return `if self.is_default and self.template_name is None: _is_initialized = True` handles it harmlessly.
 
+## Typed Asset Subclass Registry
+
+`Asset` supports game-domain subclasses (in `assetextractor/parsing/typed/`). A subclass declares `class Foo(Asset, template_names="TemplateName")`; `Asset.__init_subclass__` records it in `Asset._registry`. During construction every node goes through `Asset.create(node, cache)`, which looks up the subclass by template name. `AssetCache.load()` does `import assetextractor.parsing.typed` (lazy, inside `load()`) so the registry is populated before the cache is built — after a load, `template.assets` and `assets.elements` hold the correct subclass instances (verified: ~5.8k of ~41k assets become subclasses).
+
+- **Backward compatible**: `isinstance(x, Asset)` still holds; only `type(x) is Asset` checks are affected.
+- **`BaseAssetGUID` assets** (no `<Template>` tag) start as plain `Asset` and are re-instantiated as the typed subclass in `AssetCache.resolve_inheritance()` once the base template is known. Do not cache references to such assets taken during load — they go stale.
+- **Constructing `AssetCache` directly** (bypassing `load()`) requires importing `assetextractor.parsing.typed` first, or the registry is empty.
+- Full guide (writing a subclass, notebook re-wrapping): `assetextractor/parsing/typed/README.md`.
+
+## ColorAttribute Hex / RGBA
+
+`ColorAttribute.get_hex(color_mode="None")` returns `#RRGGBBAA`; `get_rgba(...)` returns an `(r,g,b,a)` tuple. Backed by the `AnnoColor` dataclass (Anno stores colors as signed ints). `color_mode` ∈ `None | Deuteranopia | Protanopia | Tritanopia`.
+
 ## Flags Data Type (Literals vs GUIDs)
 
 Attributes with the `Flags` data type (e.g., `Building.AssociatedRegions`, `Product.AssociatedRegion`) are parsed into a **`list[str]` of literals**, not GUIDs or integers.

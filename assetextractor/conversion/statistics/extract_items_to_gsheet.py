@@ -29,7 +29,7 @@ LANGUAGES = ["english", "german"]
 
 ICON_OUTPUT_DIR = Path(__file__).parent.parent.parent / "results/tables/icons"
 
-EXCLUDED_GUIDS = {149281, 149292}
+EXCLUDED_GUIDS = {}
 
 
 def save_icon_and_get_filename(asset: Asset | None, cache: dict[str, str], resize_factor: int = 8) -> str | None:

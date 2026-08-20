@@ -127,6 +127,9 @@ class BoostConditionParser:
                 self._parse_monument_events,
                 self._parse_war_state,
                 self._parse_in_storage,
+                self._parse_festival_active,
+                self._parse_race_outcome,
+                self._parse_compare_variable,
                 self._parse_always_true,  # Check last as it's often present with others
             ]
 
@@ -162,6 +165,9 @@ class BoostConditionParser:
                         "ConditionWarState",
                         "ConditionInStorage",
                         "ConditionTradeRouteCount",
+                        "ConditionFestivalActive",
+                        "ConditionRaceOutcome",
+                        "ConditionCompareVariable",
                     ]
                 )
                 if not has_other:
@@ -452,6 +458,90 @@ class BoostConditionParser:
                             return f"{in_storage_label}: {', '.join(goods_list)}"
 
                 return "Items in storage"
+        except Exception:
+            pass
+        return None
+
+    def _parse_festival_active(self, condition: TemplateAttribute) -> str | None:
+        """Parse ConditionFestivalActive (missing Festival means any festival satisfies it)."""
+        try:
+            if hasattr(condition, "ConditionFestivalActive"):
+                festival: Asset | None = condition.find_ref("ConditionFestivalActive.Festival")
+                if festival is not None:
+                    text_obj = self.texts.get(SOURCE_TEXT_IDS["festival"])
+                    label = text_obj() if text_obj is not None else "Festival"
+                    return f"{label}: {get_localized_name(festival)}"
+                return "Any festival active"
+        except Exception:
+            pass
+        return None
+
+    def _parse_race_outcome(self, condition: TemplateAttribute) -> str | None:
+        """Parse ConditionRaceOutcome (event, finish position, and/or specific racer)."""
+        try:
+            race = condition.find("ConditionRaceOutcome")
+            if isinstance(race, (TemplateAttribute, DictAttribute, Property)):
+                parts: list[str] = []
+
+                if self.find_val(race, "CheckEventGuid", bool):
+                    event: Asset | None = race.find_ref("CompareEventGuid")
+                    if event is not None:
+                        parts.append(get_localized_name(event))
+
+                if self.find_val(race, "CheckRaceFinishPosition", bool):
+                    position = self.find_val(race, "CompareRaceFinishPosition", (int, float))
+                    position_op = self.find_val(race, "CompareRaceFinishPositionOperator", (int, str))
+                    if position is not None:
+                        parts.append(self.format_comparison("Finish position", position, position_op or "AtLeast"))
+
+                if self.find_val(race, "CheckRacerGuid", bool):
+                    racer: Asset | None = race.find_ref("CompareRacerGuid")
+                    if racer is not None:
+                        parts.append(f"Racer: {get_localized_name(racer)}")
+
+                if len(parts) > 0:
+                    return "; ".join(parts)
+                return "Race outcome required"
+        except Exception:
+            pass
+        return None
+
+    def _parse_compare_variable(self, condition: TemplateAttribute) -> str | None:
+        """Parse ConditionCompareVariable (session/global variable compared against a literal)."""
+        try:
+            cv = condition.find("ConditionCompareVariable")
+            if isinstance(cv, (TemplateAttribute, DictAttribute, Property)):
+                variable_name = self.find_val(cv, "VariableToCheck", str)
+                comparison_op = self.find_val(cv, "ComparisonOperation", (int, str))
+                if not variable_name:
+                    return None
+
+                second_variable = cv.find("SecondVariable")
+                value: Any = None
+                if isinstance(second_variable, (TemplateAttribute, DictAttribute, Property)):
+                    if second_variable.find("BoolVariableOrValue") is not None:
+                        value = self.find_val(second_variable, "BoolVariableOrValue.BoolValue", bool)
+                    elif second_variable.find("IntVariableOrValue") is not None:
+                        value = self.find_val(second_variable, "IntVariableOrValue.IntValue", (int, float))
+                    elif second_variable.find("FloatVariableOrValue") is not None:
+                        value = self.find_val(second_variable, "FloatVariableOrValue.FloatValue", (int, float))
+                    elif second_variable.find("AssetVariableOrValue") is not None:
+                        asset_ref = second_variable.find_ref("AssetVariableOrValue.AssetValue")
+                        value = get_localized_name(asset_ref) if asset_ref is not None else None
+                    elif second_variable.find("StringVariableOrValue") is not None:
+                        value = self.find_val(second_variable, "StringVariableOrValue.StringValue", str)
+
+                if value is None:
+                    return f"{variable_name} comparison required"
+
+                if isinstance(value, bool):
+                    op_symbol = COMPARISON_OPERATORS.get(comparison_op or "AtLeast", ">=")
+                    return f"{variable_name} {op_symbol} {'Yes' if value else 'No'}"
+
+                if isinstance(value, (int, float)):
+                    return self.format_comparison(variable_name, value, comparison_op or "AtLeast")
+
+                return f"{variable_name}: {value}"
         except Exception:
             pass
         return None

@@ -282,6 +282,29 @@ class DLCDetector:
             return ref_asset.guid
         return None
 
+    def _is_base_session(self, guid: int) -> bool:
+        """True if the asset is a Session whose Region is a base-game region.
+
+        Egypt (DLC03) ships triggers like "Unlock Trigger Roman Province from Egypt"
+        whose ConditionIsDLCActive=DLC03 and ActionUnlockAsset point at the base
+        sessions Latium (Roman) / Albion (Celtic). These merely grant an additional
+        travel route to sessions that already exist in the base game, so an "unlock"
+        from a DLC trigger must not tag them as DLC content.
+        """
+        asset = self._cache.elements.get(guid)
+        if asset is None or not asset.template or not asset.template.name.startswith("Session"):
+            return False
+        region = asset.find("Session.Region")
+        region_asset = getattr(region, "value", None)
+        if region_asset is None:
+            return False
+        region_id = str(region_asset.find_value("Standard.ID") or "")
+        region_name = str(region_asset.name or "")
+        return any(base in region_id or base in region_name for base in self._base_region_names)
+
+    def _reject_base_sessions(self, guids: t.Iterable[int]) -> list[int]:
+        return [guid for guid in guids if not self._is_base_session(guid)]
+
     def _get_action_unlock_guids(self, fu_asset: Asset) -> list[int]:
         result: list[int] = []
         ta_attr = fu_asset.find("Trigger.TriggerActions")
@@ -360,7 +383,9 @@ class DLCDetector:
                 self._add_dlc_multiple(trigger.guid, dlcs_for_trigger)
 
                 # Direct unlocks in trigger actions
-                self._propagate_to_guids(self._get_action_unlock_guids(trigger), dlcs_for_trigger)
+                self._propagate_to_guids(
+                    self._reject_base_sessions(self._get_action_unlock_guids(trigger)), dlcs_for_trigger
+                )
 
                 # RegisterTrigger chaining: tag sub-trigger and propagate its unlock actions
                 ta_attr = trigger.find("Trigger.TriggerActions")
@@ -377,7 +402,7 @@ class DLCDetector:
                                     guids = self._get_list_guids(
                                         sub_item, f"TriggerAction.ActionUnlockAsset.{field}", "Asset"
                                     )
-                                    self._propagate_to_guids(guids, dlcs_for_trigger)
+                                    self._propagate_to_guids(self._reject_base_sessions(guids), dlcs_for_trigger)
 
         changed = True
         while changed:
@@ -397,7 +422,9 @@ class DLCDetector:
                     continue
 
                 # ActionUnlockAsset
-                self._propagate_to_guids(self._get_action_unlock_guids(fu_asset), dlc_guids)
+                self._propagate_to_guids(
+                    self._reject_base_sessions(self._get_action_unlock_guids(fu_asset)), dlc_guids
+                )
 
                 # TechCategory -> Techs -> Tech -> Rewards.Unlocks
                 for unlocked_guid in self._get_action_unlock_guids(fu_asset):

@@ -14,9 +14,16 @@ Usage:
 import subprocess
 import sys
 from pathlib import Path
-from typing import List
+from typing import List, TypedDict
 
 from assetextractor.extraction.utils import Config
+
+
+class RDAFileGroups(TypedDict):
+    config: list[Path]
+    ui: list[Path]
+    graphics: list[Path]
+    patches: list[Path]
 
 
 class RDAExtractor:
@@ -44,13 +51,13 @@ class RDAExtractor:
             print(f"Error testing RDAConsole: {e}")
             return False
 
-    def find_rda_files(self) -> dict[str, List[Path]]:
+    def find_rda_files(self) -> RDAFileGroups:
         """Find all relevant RDA files in main data directory."""
         if not self.main_data_path.exists():
             print(f"Error: Main data directory not found at {self.main_data_path}")
-            return {}
+            return {key: [] for key in RDAFileGroups.__annotations__}  # type: ignore
 
-        rda_files: dict[str, List[Path]] = {"config": [], "ui": [], "graphics": []}
+        rda_files: RDAFileGroups = {"config": [], "ui": [], "graphics": [], "patches": []}
 
         for rda_file in self.main_data_path.glob("*.rda"):
             name = rda_file.stem.lower()
@@ -60,6 +67,9 @@ class RDAExtractor:
                 rda_files["ui"].append(rda_file)
             elif name.startswith("graphics") or name == "shared_configs":
                 rda_files["graphics"].append(rda_file)
+            # Patch files do contain UI (icons) folders.
+            elif name.startswith("zz_patchfiles"):
+                rda_files["patches"].append(rda_file)
 
         return rda_files
 
@@ -69,11 +79,13 @@ class RDAExtractor:
         print(f"Running: {' '.join(cmd)}")
 
         try:
-            # Use shell=True and don't capture output to avoid console handle issues
+            # Spawn in a new console (RDAConsole calls Console.Clear(), which needs a
+            # real console buffer). Do NOT use shell=True: it routes the call through
+            # cmd.exe, which mangles regex metacharacters in --filter (e.g. the "|" in
+            # an alternation becomes a pipe operator), corrupting the filter.
             subprocess.run(
                 cmd,
                 check=True,
-                shell=True,
                 creationflags=subprocess.CREATE_NEW_CONSOLE if hasattr(subprocess, "CREATE_NEW_CONSOLE") else 0,
             )
             return True
@@ -98,17 +110,30 @@ class RDAExtractor:
         return self.run_rda_console(args)
 
     def extract_ui_icons(self, rda_file: Path) -> bool:
-        """Extract files containing 'icon' in path from ui.rda."""
+        """Extract files containing 'icon' in path from ui.rda or any other .rda file that might contain icons."""
         print(f"\nExtracting icon files from {rda_file.name}...")
 
         output_dir = self.config.cache_path
         args = [
             "extract",
-            "-f",
+            "-f",  # Filename (can be multiple)
             str(rda_file),
             "-y",  # Overwrite without prompting
-            "-o",
+            "-o",  # Output path.
             str(output_dir),
+            "--filter",
+            # Whitelist only the .dds actually consumed downstream. Two clauses:
+            #  1) everything under an "icon_content/" dir -- all asset-browser icons,
+            #     including non-"icon_"-prefixed ones like portrait_resident_*;
+            #  2) icons living OUTSIDE icon_content, matched by file name:
+            #       icon_*          - cdlc*/ornaments/, main/icons/ attribute icons, ...
+            #       achievement_*   - achievement icons
+            #       artwork_deity_* - deity portraits (features/religion/); other
+            #                         artwork_ (fullscreen splash art) is excluded
+            # Everything else in data/ui (backgrounds, fullscreen images, decorations,
+            # studio atlases, ...) is never displayed, so it is dropped -- cutting the
+            # cache from ~9 GB to ~2 GB.
+            r"^data/ui/(?:.*/icon_content/.*|.*/(?:icon|achievement|artwork_deity)_[^/]*)\.dds$",
         ]
 
         return self.run_rda_console(args)
@@ -161,11 +186,16 @@ class RDAExtractor:
             if not self.extract_graphics_ifo(graphics_rda):
                 success = False
 
+        # Extract icon files from patches RDA files
+        for patch_rda in rda_files["patches"]:
+            if not self.extract_ui_icons(patch_rda):
+                success = False
+
         if success:
-            print("\n✅ Extraction completed successfully!")
+            print("\n[OK] Extraction completed successfully!")
             print(f"Files extracted to: {self.config.cache_path}")
         else:
-            print("\n❌ Some extractions failed. Check the output above.")
+            print("\n[FAILED] Some extractions failed. Check the output above.")
 
         return success
 

@@ -15,9 +15,10 @@ Four modules under `assetextractor/`:
    - `extract.py` — dynamic RDA extraction
 2. **Parsing** (`assetextractor/parsing/core/`) — reads XML files and reconstructs the hierarchical structure with full inheritance resolution.
    - `templates.py` (asset structure / OOP-class analogue), `assets.py` (concrete instances), `properties.py` (nested building blocks), `attributes.py` (typed values), `common.py` (base classes), `texts.py` (localization), `uitext.py` (UI text mapping).
+   - `assetextractor/parsing/typed/` — optional **game-domain `Asset` subclasses** (Patron, LandUnit, OrnamentalBuilding, ProductionChain, …) that expose typed, computed views over the raw asset data. Registered by template name and auto-applied during `AssetCache.load()`, so `template.assets` returns the correct subclass. See `assetextractor/parsing/typed/README.md`.
 3. **Conversion** (`assetextractor/conversion/`) — generates excerpts (HTML, JSON) from parsed asset data.
    - `assetbrowser/` — Jinja2 HTML converter; outputs to `config.assetbrowser_dir`; requires a `Config` passed to `Converter`.
-   - `statistics/` — item extraction and Google Sheets export.
+   - `statistics/` — item extraction and Google Sheets export, plus domain extractors that emit simplified JSON + icons: `patron_extractor.py` (`PatronExtractor`), `ornaments_extractor.py` (`OrnamentsExtractor`), `production_chain_extractor.py` (`ProductionChainExtractor`), `specialist_extractor.py` (`SpecialistExtractor`), `fertility_set_extractor.py` (`FertilitySetExtractor`), and `icon_processor.py` (`IconProcessor`, shared icon export). Each has a companion notebook (`patrons.ipynb`, `ornaments.ipynb`, `production_chains.ipynb`, `specialists.ipynb`).
 4. **Versioning** (`assetextractor/versioning/`) — tracks asset changes across game versions in SQLite (`versioning/anno117/assets.db`); supports snapshot, diff, export to CSV/JSON, and history queries.
 
 ## Topic Documentation
@@ -32,6 +33,7 @@ In-depth guides live under `docs/`. Read the relevant file before working on a t
 - Boost conditions (`ItemWithBoost`) — `docs/conditions.md`
 - Item sources (traders, tech, quests, expeditions) — `docs/item_sources.md`
 - API patterns (`find` / `find_value`, iteration, formatting) — `docs/api_patterns.md`
+- Typed asset subclasses (registry, writing a subclass, notebook re-wrapping) — `assetextractor/parsing/typed/README.md`
 - Test conventions — `tests/AGENTS.md`
 
 ## Running Scripts and Modules
@@ -80,8 +82,11 @@ Path → module: drop the `.py`, replace `/` with `.`. Example: `assetextractor/
 - `WeightedReference`, `Template` (`add_instance()`, `assets`), `TemplateGroup`, `TemplateCache`
 
 **assets.py**
-- `Asset` — concrete instance; `guid`, `text`, `template`, `resolve_inheritance()`, `set_referenced_by()`, `print_tree()`, `short_description`, `long_description`, `buff_ui` (returns `list[BuffUI]`)
+- `Asset` — concrete instance; `guid`, `text`, `template`, `resolve_inheritance()`, `set_referenced_by()`, `print_tree()`, `short_description`, `long_description`, `buff_ui` (returns `list[BuffUI]`); `find_ref(path)` returns a resolved `Asset | None`. Subclass registry: `Asset._registry`, `__init_subclass__(template_names=...)`, classmethod `Asset.create(node, cache)`.
 - `AssetGroup`, `AssetCache` — `resolve_inheritance()`, `resolve_references()`, `resolve_dlc_unlocks()`, static `load(config)`
+
+**attributes.py (additions)**
+- `AnnoColor` (dataclass: Anno signed-int ↔ RGBA/hex); `ColorAttribute.get_hex(color_mode="None")` → `#RRGGBBAA`, `ColorAttribute.get_rgba(...)` → `(r,g,b,a)`. `color_mode` ∈ `None|Deuteranopia|Protanopia|Tritanopia`.
 
 **texts.py**
 - `Text` — `id`, `values`, `has_html_escapes()`, `count_format_args()`, `format(list)`, `__call__()`
@@ -93,9 +98,14 @@ Path → module: drop the `.py`, replace `/` with `.`. Example: `assetextractor/
 - `BuffUI` — dataclass: `icon`, `text`, `value`, `literal`
 - `UITextCache` — `get_ui_text()`, `get_text_id()`, `get_buff_type_name()`, `format_buff_text()`, `create_buff_ui()`, `create_buff_ui_list()`, `create_buff_ui_dict()`, `create_buff_ui_flags()`
 
+### Typed subclasses (`assetextractor/parsing/typed/`)
+
+Game-domain `Asset` subclasses, each declaring `template_names=` so `Asset._registry` maps a template name to its class; `AssetCache.load()` imports the package and every asset is built via `Asset.create()`. `template.assets` already returns the right subclass. Concrete classes cover patrons, buildings (ornamental, aqueduct, residence, trade, public-service, villa), buffs (area/building/ship/defense), units and upgrades (building/factory/health/maintenance/movement/residence/trade-ship/unit/vehicle), economy/fertility, map generator (fertility set/pool), ownership (UplayProduct), factories and production chains. Abstract bases (`AssetPoolBase`, `AssetWithCosts`, `AssetWithMaintenance`) have no `template_names=`. Full usage — writing a subclass, notebook re-wrapping without reloading the cache — is in `assetextractor/parsing/typed/README.md`.
+
 ### Conversion (`assetextractor/conversion/`)
 
 - `assetbrowser/convert.py::Converter` — HTML asset browser; `render_elements()`, `render_overview()`, `run()`
+- `statistics/{patron,ornaments,production_chain,specialist,fertility_set}_extractor.py` — domain extractors emitting simplified JSON (`PatronExtractor`, `OrnamentsExtractor`, `ProductionChainExtractor`, `SpecialistExtractor`, `FertilitySetExtractor`); `statistics/icon_processor.py::IconProcessor` — shared icon export (`save_image`, mirrored/flattened path options)
 
 ## Basic Setup
 

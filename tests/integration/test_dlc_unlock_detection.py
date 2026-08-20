@@ -37,6 +37,28 @@ def test_dlc_unlock_detection(assets: AssetCache):
         for ref in unlocks.values():
             assert 67902 in ref.source.unlocked_by_dlcs
 
+def test_base_sessions_not_dlc_tagged(assets: AssetCache):
+    """Base-game sessions must not be DLC-tagged by cross-region unlock triggers.
+
+    Egypt (DLC03) ships triggers 'Unlock Trigger Roman/Celtic Province from Egypt'
+    whose ConditionIsDLCActive=DLC03 and ActionUnlockAsset unlock the base sessions
+    Latium (3245, Roman) and Albion (6627, Celtic). These merely grant an additional
+    travel route to sessions that already exist in the base game, so the sessions
+    themselves must stay untagged. The genuine Egyptian session (149679) must remain
+    tagged.
+    """
+    latium = assets.elements.get(3245)
+    albion = assets.elements.get(6627)
+    assert latium is not None
+    assert albion is not None
+    assert dict(latium.unlocked_by_dlcs) == {}, latium.unlocked_by_dlcs
+    assert dict(albion.unlocked_by_dlcs) == {}, albion.unlocked_by_dlcs
+
+    egypt_session = assets.elements.get(149679)
+    assert egypt_session is not None
+    assert 67904 in egypt_session.unlocked_by_dlcs
+
+
 def test_dlc_bidirectional_references(assets: AssetCache):
     """Test that DLC references are correctly populated in both directions."""
     # Find any asset with DLC unlocks
