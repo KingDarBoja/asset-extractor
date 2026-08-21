@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from functools import cached_property
 from typing import TYPE_CHECKING, List, Union, cast
@@ -44,7 +45,13 @@ class AssetWithBuilding(Asset):
         default.
         """
         hint_asset = self.building_info.origin_hint
-        return hint_asset.text() if hint_asset and hint_asset.text else "Base"
+
+        if hint_asset and hint_asset.text:
+            raw_text = hint_asset.text()
+            # The regex <[^>]+> matches any character between < and > and replaces it with an empty string
+            return re.sub(r"<[^>]+>", "", raw_text)
+
+        return "Base"
 
     @cached_property
     def building_info(self) -> Building:
