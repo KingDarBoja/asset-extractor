@@ -187,3 +187,14 @@ class UplayProductType(StrEnum):
     PREORDER_BONUS = "PreOrderBonus"
     TWITCH_DROP = "TwitchDrop"
     LANGUAGE_PACK = "LanguagePack"
+
+
+class AchievementDifficultyType(StrEnum):
+    """
+    Define the dataset 'AchievementDifficulty' that must contain 3 values. This comes
+    from '?' asset.
+    """
+
+    BRONZE = "Bronze"
+    SILVER = "Silver"
+    GOLD = "Gold"
