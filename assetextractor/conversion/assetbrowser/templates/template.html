@@ -33,7 +33,7 @@
                     {% if node.is_variable %}
                     {{ node.variable_name }} <em>(Variable)</em>
                     {% elif ref is not none %}
-                    <a href="../assets/{{ ref.safe_identifier }}.html" title="{{ enhanced_tooltip(ref) }}">{{ ref.name if ref.name else ref }}</a>
+                    <a href="../assets/{{ ref.safe_identifier }}.html" title="{{ enhanced_tooltip(ref) }}">{{ ref.name | striptags if ref.name else ref | striptags }}</a>
                     {% else %}
                     None
                     {% endif %}
