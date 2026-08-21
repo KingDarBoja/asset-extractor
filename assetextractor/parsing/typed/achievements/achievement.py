@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import cached_property
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from assetextractor.parsing.core.assets import Asset
-from assetextractor.parsing.core.texts import Text
 from assetextractor.parsing.typed.common.enums import AchievementDifficultyType
+
+if TYPE_CHECKING:
+    from assetextractor.parsing.core.texts import Text
 
 
 @dataclass(frozen=True)
