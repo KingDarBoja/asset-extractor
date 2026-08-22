@@ -191,8 +191,9 @@ class UplayProductType(StrEnum):
 
 class AchievementDifficultyType(StrEnum):
     """
-    Define the dataset 'AchievementDifficulty' that must contain 3 values. This comes
-    from '?' asset.
+    Dataset 'AchievementDifficulty' (Id 252), backed by the 'Choice' property
+    'Achievement.AchievementDifficulty' (schema default: Bronze). Verified against
+    real 'Achievement' assets in assets.xml (e.g. GUID 80528 = Silver, 80536 = Gold).
     """
 
     BRONZE = "Bronze"
