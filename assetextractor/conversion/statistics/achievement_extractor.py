@@ -192,9 +192,16 @@ class AchievementExtractor:
         """Exports all achievement-related icons."""
         output_path = Path(output_base)
         standard_assets: List[Asset] = []
+        visited_asset: set[int] = set()
+
+        if not self.achievement_sets:
+            self.extract_all()
 
         for a_set in self.achievement_sets.values():
-            standard_assets.extend(a_set.achievements)
+            for item in a_set.achievements:
+                if item.guid not in visited_asset:
+                    standard_assets.append(item)
+                    visited_asset.add(item.guid)
 
         print(f"Exporting {len(standard_assets)} achievement icons...")
         IconProcessor.export_icons(
