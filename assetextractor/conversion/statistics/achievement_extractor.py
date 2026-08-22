@@ -182,6 +182,22 @@ class AchievementExtractor:
             json.dump(data, f, indent=4)
         print(f"Successfully exported {len(data)} achievement sets to {file_path}")
 
+    def _collect_unique_achievements(self) -> List[Asset]:
+        """Gathers distinct 'Achievement' assets across all achievement sets, deduped by GUID."""
+        if not self.achievement_sets:
+            self.extract_all()
+
+        standard_assets: List[Asset] = []
+        visited_asset: set[int] = set()
+
+        for a_set in self.achievement_sets.values():
+            for item in a_set.achievements:
+                if item.guid not in visited_asset:
+                    standard_assets.append(item)
+                    visited_asset.add(item.guid)
+
+        return standard_assets
+
     def export_all_achievement_assets(
         self,
         output_base: Path | str,
@@ -191,17 +207,7 @@ class AchievementExtractor:
     ) -> None:
         """Exports all achievement-related icons."""
         output_path = Path(output_base)
-        standard_assets: List[Asset] = []
-        visited_asset: set[int] = set()
-
-        if not self.achievement_sets:
-            self.extract_all()
-
-        for a_set in self.achievement_sets.values():
-            for item in a_set.achievements:
-                if item.guid not in visited_asset:
-                    standard_assets.append(item)
-                    visited_asset.add(item.guid)
+        standard_assets = self._collect_unique_achievements()
 
         print(f"Exporting {len(standard_assets)} achievement icons...")
         IconProcessor.export_icons(
@@ -222,18 +228,7 @@ class AchievementExtractor:
     ):
         """Iterates through all resolved underlying achievement and exports their icons."""
         output_path = Path(output_base)
-        standard_assets: List[Asset] = []
-        visited_asset: set[int] = set()
-
-        if not self.achievement_sets:
-            self.extract_all()
-
-        # Gather distinct 'Achievement' assets down the tree
-        for ach_set in self.achievement_sets.values():
-            for item in ach_set.achievements:
-                if item.guid not in visited_asset:
-                    standard_assets.append(item)
-                    visited_asset.add(item.guid)
+        standard_assets = self._collect_unique_achievements()
 
         print(f"Started exporting {len(standard_assets)} achievement icons...")
         IconProcessor.export_icons(

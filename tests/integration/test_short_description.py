@@ -51,3 +51,11 @@ def test_long_text_with_tag_straddling_cutoff_has_no_dangling_fragment():
 def test_no_text_falls_back_to_name():
     asset = _FakeAsset(None, name="FakeName")
     assert _short_description(asset) == "FakeName"
+
+
+def test_exact_120_char_stripped_text_has_no_ellipsis():
+    text = "x" * 120
+    asset = _FakeAsset(text)
+    result = _short_description(asset)
+    assert result == text
+    assert not result.endswith("...")
