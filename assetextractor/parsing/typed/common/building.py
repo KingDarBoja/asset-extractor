@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from functools import cached_property
 from typing import TYPE_CHECKING, List, Union, cast
 
 from assetextractor.parsing.core.assets import Asset
+from assetextractor.parsing.core.texts import strip_html_tags
 from assetextractor.parsing.typed.common.enums import BuildingType, Region
 from assetextractor.parsing.typed.construction_category import ConstructionCategory
 from assetextractor.parsing.typed.ownership import UplayProduct
@@ -48,8 +48,7 @@ class AssetWithBuilding(Asset):
 
         if hint_asset and hint_asset.text:
             raw_text = hint_asset.text()
-            # The regex <[^>]+> matches any character between < and > and replaces it with an empty string
-            return re.sub(r"<[^>]+>", "", raw_text)
+            return strip_html_tags(raw_text)
 
         return "Base"
 
