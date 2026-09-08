@@ -123,6 +123,7 @@ class RarityVisualization(StrEnum):
     RARE = "Rare"
     EPIC = "Epic"
     LEGENDARY = "Legendary"
+    MYTHIC = "Mythic"
     QUEST = "Quest"
     UNIQUE = "Unique"
 
